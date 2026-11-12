@@ -24,10 +24,11 @@ OpenRouter (`/api/v1/chat/completions`, `stream: true`), model `baidu/ernie-5.5-
 The key is XOR-ed with a random salt by `scripts/obfuscate_key.swift` and stored as byte arrays, so it is not a plain string in the source or binary. This is obfuscation, not security: anyone with the binary can recover the key. Use a free, limited key.
 
 ## What works
+- Composer: glows while focused; a corner button cycles the editor size compact → 30% of the screen → full screen (send button moves below the editor, full width). Reopened chats open at their newest message.
 - Streaming replies as they are generated; **Stop** keeps the partial reply and adds a "You stopped the response." note (with Retry) — it is not treated as an error.
 - Replies are rendered as Markdown: headings, lists, quotes, tables, inline code, and code blocks with syntax colors and a Copy button. Copy actions show a checkmark and a "Copied to clipboard" toast.
 - Opens straight into an empty chat with a greeting and mode cards. Modes (Writing, Creative, Conversation, Personal, Developer) change the system prompt and offer quick prompts.
-- Multiple chats: a full-screen sidebar (menu icon) with search, a **New chat** button and your history (swipe to delete); history persists across restarts (SwiftData). Quick prompts are bordered, tappable bubbles.
+- Multiple chats: a push-style drawer (menu icon or left-edge swipe; interactive, spring-animated, dim layer covers the safe areas) with search, a **New chat** button and your history (swipe to delete); history persists across restarts (SwiftData). Quick prompts are bordered, tappable bubbles.
 - Settings (sidebar footer, a custom-designed page): your name, custom instructions added to every chat, System/Light/Dark theme, delete all chats, Help and Privacy pages.
 - States: empty list, empty chat (greeting + starter prompts), typing indicator, and errors with **Retry** — no network, timeout, invalid key, limit reached (402/429), model unavailable, server error, missing key. After a restart, a chat ending in an unanswered message also offers Retry.
 - Light and dark themes; design kit applied (red accent, 16px cards, 48px controls, onboarding on first launch).

@@ -1,7 +1,7 @@
 import SwiftData
 import SwiftUI
 
-/// The main screen: header, mode chips, conversation (or empty state) and composer.
+/// The main screen: header, conversation (or empty state) and the composer.
 struct ChatScreen: View {
     let chat: Chat
     let onMenu: () -> Void
@@ -12,54 +12,62 @@ struct ChatScreen: View {
     @Environment(Toast.self) private var toast
     @AppStorage(UserProfile.nameKey) private var userName = ""
     @State private var draft = ""
+    @State private var composerSize: ComposerSize = .compact
 
     private static let bottomID = "bottom"
 
     var body: some View {
-        let state = engine.state(for: chat)
-        let messages = chat.sortedMessages
-        let showEmpty = messages.isEmpty && !state.isGenerating
+        GeometryReader { geo in
+            let state = engine.state(for: chat)
+            let messages = chat.sortedMessages
+            let showEmpty = messages.isEmpty && !state.isGenerating
 
-        VStack(spacing: 0) {
-            header
+            VStack(spacing: 0) {
+                header
 
-            if showEmpty {
-                EmptyChatContent(
-                    mode: chat.mode,
-                    userName: userName,
-                    onSelectMode: setMode,
-                    onClearMode: { setMode(nil) },
-                    onPrompt: send
+                // In full-screen compose mode the conversation is hidden so the editor gets the whole screen.
+                if composerSize != .full {
+                    if showEmpty {
+                        EmptyChatContent(
+                            mode: chat.mode,
+                            userName: userName,
+                            onSelectMode: setMode,
+                            onClearMode: { setMode(nil) },
+                            onPrompt: send
+                        )
+                    } else {
+                        conversation(messages: messages, state: state)
+                    }
+
+                    if let error = bannerError(state: state) {
+                        ErrorBanner(error: error) { engine.retry(chat, context: context) }
+                            .padding(.horizontal, Theme.spacing3)
+                            .padding(.bottom, Theme.spacing2)
+                    }
+
+                    if state.isGenerating {
+                        StopPill { engine.stop(chat) }
+                            .padding(.bottom, Theme.spacing2)
+                    }
+                }
+
+                ComposerView(
+                    text: $draft,
+                    size: $composerSize,
+                    isGenerating: state.isGenerating,
+                    availableHeight: geo.size.height,
+                    onSend: { send(draft) },
+                    onStop: { engine.stop(chat) }
                 )
-            } else {
-                conversation(messages: messages, state: state)
             }
-
-            if let error = bannerError(state: state) {
-                ErrorBanner(error: error) { engine.retry(chat, context: context) }
-                    .padding(.horizontal, Theme.spacing3)
-                    .padding(.bottom, Theme.spacing2)
-            }
-
-            if state.isGenerating {
-                StopPill { engine.stop(chat) }
-                    .padding(.bottom, Theme.spacing2)
-            }
-
-            ComposerView(
-                text: $draft,
-                isGenerating: state.isGenerating,
-                onSend: { send(draft) },
-                onStop: { engine.stop(chat) }
-            )
+            .frame(maxWidth: 760)
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: 760)
-        .frame(maxWidth: .infinity)
-        .overlay(alignment: .bottom) {
+        .overlay(alignment: .top) {
             if let message = toast.message {
                 ToastView(text: message)
-                    .padding(.bottom, 92)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.top, 64)
+                    .transition(.move(edge: .top).combined(with: .opacity))
                     .allowsHitTesting(false)
             }
         }
@@ -99,10 +107,12 @@ struct ChatScreen: View {
 
     // MARK: Conversation
 
+    /// Not lazy on purpose: a lazy stack + "scroll to bottom on appear" left reopened chats blank until dragged.
+    /// `defaultScrollAnchor(.bottom)` makes every chat open at its newest message.
     private func conversation(messages: [Message], state: ChatEngine.State) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 12) {
+                VStack(spacing: 12) {
                     ForEach(messages) { message in
                         if message.role == .note {
                             NoteRow(
@@ -123,11 +133,11 @@ struct ChatScreen: View {
                 .padding(.horizontal, Theme.spacing3)
                 .padding(.vertical, 12)
             }
+            .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: messages.count) { scrollToBottom(proxy, animated: true) }
             .onChange(of: messages.last?.content) { scrollToBottom(proxy, animated: false) }
             .onChange(of: state.isGenerating) { scrollToBottom(proxy, animated: true) }
-            .onAppear { scrollToBottom(proxy, animated: false) }
         }
     }
 
@@ -148,6 +158,7 @@ struct ChatScreen: View {
     private func send(_ text: String) {
         engine.send(text, in: chat, context: context)
         draft = ""
+        composerSize = .compact
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool) {

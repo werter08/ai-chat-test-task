@@ -5,8 +5,8 @@ enum Route: Hashable {
     case settings
 }
 
-/// Launches straight into an empty chat. The menu icon opens a full-screen sidebar (history + new chat);
-/// Settings is a regular pushed page.
+/// Launches straight into an empty chat. The menu icon (or an edge swipe) opens a push-style drawer
+/// (history + new chat); Settings is a regular pushed page.
 struct RootView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Chat.updatedAt, order: .reverse) private var chats: [Chat]
@@ -22,7 +22,26 @@ struct RootView: View {
     var body: some View {
         Group {
             if didSeeOnboarding {
-                ZStack {
+                DrawerContainer(isOpen: $showSidebar, edgeSwipeEnabled: path.isEmpty) {
+                    SidebarView(
+                        currentID: currentID,
+                        onSelect: { chat in
+                            currentID = chat.id
+                            path = []
+                            setSidebar(false)
+                        },
+                        onNewChat: {
+                            path = []
+                            startNewChat()
+                            setSidebar(false)
+                        },
+                        onSettings: {
+                            setSidebar(false)
+                            path.append(.settings)
+                        },
+                        onClose: { setSidebar(false) }
+                    )
+                } content: {
                     NavigationStack(path: $path) {
                         Group {
                             if let current {
@@ -42,8 +61,6 @@ struct RootView: View {
                             }
                         }
                     }
-
-                    if showSidebar { sidebar }
                 }
                 .onAppear(perform: ensureCurrent)
                 .onChange(of: chats.map(\.id)) { ensureCurrent() }
@@ -58,44 +75,8 @@ struct RootView: View {
 
     // MARK: Sidebar
 
-    /// Opens at 70% of the width on phones (380pt on wide screens); tapping the dimmed rest closes it.
-    private var sidebar: some View {
-        GeometryReader { geo in
-            let wide = geo.size.width >= 600
-            HStack(spacing: 0) {
-                SidebarView(
-                    currentID: currentID,
-                    onSelect: { chat in
-                        currentID = chat.id
-                        path = []
-                        setSidebar(false)
-                    },
-                    onNewChat: {
-                        path = []
-                        startNewChat()
-                        setSidebar(false)
-                    },
-                    onSettings: {
-                        setSidebar(false)
-                        path.append(.settings)
-                    },
-                    onClose: { setSidebar(false) }
-                )
-                .frame(width: wide ? 380 : geo.size.width * 0.7)
-                .shadow(color: .black.opacity(0.18), radius: 12, x: 2)
-                Color.black.opacity(0.3)
-                    .contentShape(Rectangle())
-                    .onTapGesture { setSidebar(false) }
-                    .accessibilityLabel("Close menu")
-                    .accessibilityAddTraits(.isButton)
-            }
-        }
-        .transition(.move(edge: .leading))
-        .zIndex(1)
-    }
-
     private func setSidebar(_ visible: Bool) {
-        withAnimation(.easeInOut(duration: 0.25)) { showSidebar = visible }
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { showSidebar = visible }
     }
 
     // MARK: Current chat

@@ -330,48 +330,157 @@ struct EmptyChatContent: View {
     }
 }
 
+/// How much room the message editor takes: one line (grows to 6), 30% of the screen, or the whole screen.
+enum ComposerSize {
+    case compact, third, full
+
+    var next: ComposerSize {
+        switch self {
+        case .compact: .third
+        case .third: .full
+        case .full: .compact
+        }
+    }
+}
+
 /// Composer from the design kit: rounded input + red rounded-square send/stop button.
+/// While focused the field glows; the corner button cycles compact → 30% → full screen → compact.
 struct ComposerView: View {
     @Binding var text: String
+    @Binding var size: ComposerSize
     let isGenerating: Bool
+    let availableHeight: CGFloat
     let onSend: () -> Void
     let onStop: () -> Void
+
+    @FocusState private var focused: Bool
 
     private var canSend: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    var body: some View {
-        HStack(alignment: .bottom, spacing: Theme.spacing2) {
-            TextField("Ask me anything…", text: $text, axis: .vertical)
-                .lineLimit(1...6)
-                .textFieldStyle(.plain)
-                .font(.system(size: 16))
-                .padding(.horizontal, 14)
-                .frame(minHeight: Theme.controlHeight)
-                .background(Theme.fill, in: RoundedRectangle(cornerRadius: Theme.controlRadius, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.controlRadius, style: .continuous)
-                        .strokeBorder(Theme.border, lineWidth: 1)
-                )
-                .onSubmit { if canSend && !isGenerating { onSend() } }
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: Theme.controlRadius, style: .continuous)
+    }
 
-            Button(action: isGenerating ? onStop : onSend) {
-                Image(systemName: isGenerating ? "stop.fill" : "paperplane.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: Theme.controlHeight, height: Theme.controlHeight)
-                    .background(
-                        Color.accentColor.opacity(isGenerating || canSend ? 1 : 0.4),
-                        in: RoundedRectangle(cornerRadius: Theme.controlRadius, style: .continuous)
-                    )
+    var body: some View {
+        // Compact: field and send button side by side. Expanded (30% / full): editor on top, full-width send below.
+        Group {
+            if size == .compact {
+                HStack(alignment: .bottom, spacing: Theme.spacing2) {
+                    field
+                    sendButton(wide: false)
+                }
+            } else {
+                VStack(spacing: Theme.spacing2) {
+                    field
+                    sendButton(wide: true)
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(!isGenerating && !canSend)
-            .accessibilityLabel(isGenerating ? "Stop generating" : "Send message")
         }
         .padding(.horizontal, Theme.spacing3)
         .padding(.vertical, Theme.spacing2)
-        .background(.bar)
+        .frame(maxHeight: size == .full ? .infinity : nil, alignment: .bottom)
+        .background {
+            // Full-screen compose blends with the page; otherwise the composer sits on a bar material.
+            if size == .full { Color.clear } else { Rectangle().fill(.bar) }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: size)
+    }
+
+    // MARK: Field
+
+    private var field: some View {
+        ZStack(alignment: .topTrailing) {
+            if size == .compact {
+                TextField("Ask me anything…", text: $text, axis: .vertical)
+                    .lineLimit(1...6)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 16))
+                    .padding(.leading, 14)
+                    .padding(.trailing, 44)
+                    .frame(minHeight: Theme.controlHeight)
+                    .focused($focused)
+                    .onSubmit { if canSend && !isGenerating { onSend() } }
+            } else {
+                editor
+            }
+            sizeButton
+        }
+        .frame(maxHeight: size == .full ? .infinity : nil)
+        .background(focused ? Color.accentColor.opacity(0.06) : Theme.fill, in: shape)
+        .overlay(shape.strokeBorder(focused ? Color.accentColor : Theme.border, lineWidth: focused ? 2 : 1))
+        .shadow(color: Color.accentColor.opacity(focused ? 0.35 : 0), radius: focused ? 10 : 0)
+        .animation(.easeInOut(duration: 0.2), value: focused)
+    }
+
+    private var editor: some View {
+        ZStack(alignment: .topLeading) {
+            if text.isEmpty {
+                Text("Ask me anything…")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 8)
+                    .allowsHitTesting(false)
+            }
+            TextEditor(text: $text)
+                .font(.system(size: 16))
+                .scrollContentBackground(.hidden)
+                .focused($focused)
+        }
+        .padding(.leading, 9)
+        .padding(.trailing, 44)
+        .padding(.vertical, 6)
+        .frame(height: size == .third ? max(120, availableHeight * 0.3) : nil)
+        .frame(maxHeight: size == .full ? .infinity : nil)
+    }
+
+    private var sizeButton: some View {
+        Button(action: cycleSize) {
+            Image(systemName: size == .full ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(focused ? Color.accentColor : .secondary)
+                .frame(width: 34, height: 34)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 7)
+        .padding(.trailing, 4)
+        .accessibilityLabel(size == .full ? "Collapse input" : "Expand input")
+    }
+
+    private func cycleSize() {
+        size = size.next
+        // The text view is replaced when switching between compact and expanded: give focus back.
+        Task {
+            try? await Task.sleep(for: .milliseconds(60))
+            focused = true
+        }
+    }
+
+    // MARK: Send / stop
+
+    private func sendButton(wide: Bool) -> some View {
+        Button(action: isGenerating ? onStop : onSend) {
+            HStack(spacing: Theme.spacing2) {
+                Image(systemName: isGenerating ? "stop.fill" : "paperplane.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                if wide {
+                    Text(isGenerating ? "Stop" : "Send")
+                        .font(.system(size: 16, weight: .semibold))
+                }
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: wide ? .infinity : Theme.controlHeight)
+            .frame(width: wide ? nil : Theme.controlHeight, height: Theme.controlHeight)
+            .background(
+                Color.accentColor.opacity(isGenerating || canSend ? 1 : 0.4),
+                in: shape
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!isGenerating && !canSend)
+        .accessibilityLabel(isGenerating ? "Stop generating" : "Send message")
     }
 }

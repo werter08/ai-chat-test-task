@@ -5,9 +5,9 @@ import XCTest
 /// screenshots are also written there as PNG files.
 final class WalkthroughUITests: XCTestCase {
     /// Average brightness (0 = black, 1 = white) of one pixel of the current screen, near the top where only the page background shows.
-    private func backgroundBrightness() -> CGFloat {
+    private func backgroundBrightness(x: Double = 0.5, y: Double = 0.02) -> CGFloat {
         guard let cg = XCUIScreen.main.screenshot().image.cgImage else { return -1 }
-        let rect = CGRect(x: cg.width / 2, y: Int(Double(cg.height) * 0.02), width: 1, height: 1)
+        let rect = CGRect(x: Int(Double(cg.width) * x), y: Int(Double(cg.height) * y), width: 1, height: 1)
         guard let crop = cg.cropping(to: rect) else { return -1 }
         var px = [UInt8](repeating: 0, count: 4)
         guard let ctx = CGContext(data: &px, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
@@ -50,7 +50,18 @@ final class WalkthroughUITests: XCTestCase {
         // Sidebar: full screen with New chat button.
         app.buttons["Menu"].tap()
         XCTAssertTrue(app.buttons["New chat"].waitForExistence(timeout: 5))
+        sleep(1)
         shot("3_sidebar")
+        // The dimmed (free) zone must cover the status-bar safe area too: top-right pixel is darker than the white page.
+        XCTAssertLessThan(backgroundBrightness(x: 0.92, y: 0.01), 0.97, "dim layer should reach the top safe area")
+        XCTAssertLessThan(backgroundBrightness(x: 0.92, y: 0.995), 0.97, "dim layer should reach the bottom safe area")
+
+        // Tapping the dimmed 30% closes the drawer.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        sleep(1)
+        XCTAssertTrue(app.textFields["Ask me anything…"].isHittable, "drawer should close after tapping the free zone")
+        app.buttons["Menu"].tap()
+        XCTAssertTrue(app.buttons["sidebar.settings"].waitForExistence(timeout: 5))
 
         // Settings is a pushed page, not a sheet.
         app.buttons["sidebar.settings"].tap()
@@ -58,7 +69,7 @@ final class WalkthroughUITests: XCTestCase {
         shot("4_settings_light")
 
         // Switching appearance changes the settings page itself.
-        app.buttons["System"].tap()   // start from a known state (system = light on this simulator)
+        app.buttons["Light"].tap()   // explicit: the simulator's system theme may be dark
         sleep(1)
         XCTAssertGreaterThan(backgroundBrightness(), 0.7, "settings should be light")
         app.buttons["Dark"].tap()
@@ -91,6 +102,8 @@ final class WalkthroughUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["The core idea"].waitForExistence(timeout: 5), "heading should be rendered, not '## The core idea'")
         XCTAssertFalse(app.staticTexts["## The core idea"].exists)
+        // A reopened chat must show its newest content right away (no dragging needed to reveal it).
+        XCTAssertTrue(app.staticTexts["suspension point"].isHittable, "bottom of a reopened chat should be visible immediately")
         shot("7_markdown")
 
         // Copy gives visible feedback.
@@ -100,5 +113,38 @@ final class WalkthroughUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Copied"].waitForExistence(timeout: 2), "copy button should switch to 'Copied'")
         shot("8_copied")
         // The "Copied to clipboard" toast is not exposed to XCUITest (it is non-interactive); it is checked in the 8_copied screenshot.
+    }
+
+    /// Composer: focus glow, expand to 30% of the screen, then full screen, then back.
+    func testComposerExpandsToThirdThenFullScreen() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-didSeeOnboarding", "YES", "-uiTestInMemory"]
+        app.launch()
+        let field = app.textFields["Ask me anything…"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        sleep(1)
+        shot("9_composer_focused")
+
+        app.buttons["Expand input"].tap()
+        XCTAssertTrue(app.textViews.firstMatch.waitForExistence(timeout: 5), "expanded mode uses a multi-line editor")
+        let thirdHeight = app.textViews.firstMatch.frame.height
+        let screenHeight = app.frame.height
+        XCTAssertGreaterThan(thirdHeight, screenHeight * 0.2)
+        XCTAssertLessThan(thirdHeight, screenHeight * 0.4)
+        shot("10_composer_third")
+        // Expanded: the send button sits below the editor and spans the width (VStack layout).
+        let send = app.buttons["Send message"]
+        XCTAssertGreaterThan(send.frame.width, app.frame.width * 0.7, "send button should be full width when expanded")
+        XCTAssertGreaterThan(send.frame.minY, app.textViews.firstMatch.frame.maxY - 2, "send button should be below the editor")
+
+        app.buttons["Expand input"].tap()
+        XCTAssertTrue(app.buttons["Collapse input"].waitForExistence(timeout: 5))
+        sleep(1)
+        XCTAssertGreaterThan(app.textViews.firstMatch.frame.height, screenHeight * 0.5, "full mode should take most of the screen")
+        shot("11_composer_full")
+
+        app.buttons["Collapse input"].tap()
+        XCTAssertTrue(app.textFields["Ask me anything…"].waitForExistence(timeout: 5))
     }
 }
