@@ -25,7 +25,7 @@ The key is XOR-ed with a random salt by `scripts/obfuscate_key.swift` and stored
 
 ## What works
 - Composer: glows while focused; a corner button cycles the editor size compact → 30% of the screen → full screen (send button moves below the editor, full width). Reopened chats open at their newest message.
-- Replies appear sentence by sentence: each sentence (list item, heading, block) fades in from 0 to 1, and the next one starts when the previous reaches 70%. The unfinished tail is held back until complete; if the network is far ahead the animation speeds up to catch up.
+- Replies appear sentence by sentence: each sentence (list item, heading, block) fades in from 0 to 1, and the next one starts when the previous reaches 70%. The unfinished tail is held back until complete; if the network is far ahead the animation speeds up to catch up. The bubble's height is animated (no line-by-line jumps), the scroll view follows the growth, and the Copy button appears below the message once it is finished.
 - Streaming replies as they are generated; **Stop** keeps the partial reply and adds a "You stopped the response." note (with Retry) — it is not treated as an error.
 - Replies are rendered as Markdown: headings, lists, quotes, tables, inline code, and code blocks with syntax colors and a Copy button. Long-pressing a message shows Copy and Share (there is no permanent Share button; message text is not selectable so the long-press menu is reliable). Copy actions show a checkmark and a "Copied to clipboard" toast.
 - Opens straight into an empty chat with a greeting and mode cards. Modes (Writing, Creative, Conversation, Personal, Developer) change the system prompt and offer quick prompts.

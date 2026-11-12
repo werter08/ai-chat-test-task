@@ -124,7 +124,7 @@ struct ChatScreen: View {
                             MessageBubble(
                                 message: message,
                                 isStreaming: state.isGenerating && message.id == messages.last?.id,
-                                onReveal: { scrollToBottom(proxy, animated: false) }
+                                onReveal: { scrollToBottom(proxy, animated: true) }
                             )
                         }
                     }
@@ -138,9 +138,10 @@ struct ChatScreen: View {
                 .padding(.vertical, 12)
             }
             .defaultScrollAnchor(.bottom)
+            // Keeps the newest text pinned to the bottom while a reply grows (smoothly, no per-frame scrolling).
+            .defaultScrollAnchor(.bottom, for: .sizeChanges)
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: messages.count) { scrollToBottom(proxy, animated: true) }
-            .onChange(of: messages.last?.content) { scrollToBottom(proxy, animated: false) }
             .onChange(of: state.isGenerating) { scrollToBottom(proxy, animated: true) }
         }
     }

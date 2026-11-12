@@ -173,12 +173,21 @@ final class WalkthroughUITests: XCTestCase {
         XCTAssertTrue(heading.waitForExistence(timeout: 8), "reply should start appearing")
         XCTAssertFalse(app.staticTexts["suspension point"].exists, "the end of the reply should not be shown yet")
         shot("12_typing")
+        XCTAssertFalse(app.buttons["Copy"].exists, "Copy appears only once the reply is finished")
+        sleep(2)
+        shot("12b_typing_mid")
 
         // Eventually everything is there.
         XCTAssertTrue(app.staticTexts["suspension point"].waitForExistence(timeout: 30), "full reply should appear")
         sleep(1)
         shot("13_typed_done")
         XCTAssertFalse(app.buttons["Stop generating"].exists)
+        // Copy sits below the finished message, under its last line.
+        let copy = app.buttons["Copy"].firstMatch
+        XCTAssertTrue(copy.waitForExistence(timeout: 5), "Copy should appear after the reply finishes")
+        XCTAssertGreaterThan(copy.frame.minY, app.staticTexts["suspension point"].frame.maxY - 1, "Copy should be below the message")
+        sleep(1)
+        XCTAssertTrue(copy.isHittable, "after finishing, the bottom of the reply (incl. Copy) must be visible, not hidden under the composer")
     }
 
     /// Stopping mid-stream is not an error: partial text stays and a note appears.

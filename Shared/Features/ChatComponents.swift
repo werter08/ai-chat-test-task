@@ -1,5 +1,10 @@
 import SwiftUI
 
+private struct StagedHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
 private struct RevealKey: Hashable {
     let count: Int
     let streaming: Bool
@@ -30,6 +35,8 @@ struct MessageBubble: View {
     /// When each unit (sentence / list item / block) became available, as seconds since the reference date.
     @State private var eligible: [Double] = []
     @State private var now = Date.timeIntervalSinceReferenceDate
+    /// Natural height of the staged content; the visible frame animates towards it.
+    @State private var stagedHeight: CGFloat = 0
 
     init(message: Message, isStreaming: Bool = false, onReveal: @escaping () -> Void = {}) {
         self.message = message
@@ -56,24 +63,40 @@ struct MessageBubble: View {
     var body: some View {
         HStack(alignment: .top, spacing: Theme.spacing2) {
             if isUser { Spacer(minLength: 48) }
-            bubble
-                .contextMenu {
-                    Button(action: copyMessage) { Label("Copy", systemImage: "doc.on.doc") }
-                    ShareLink(item: message.content) { Label("Share", systemImage: "square.and.arrow.up") }
+            VStack(alignment: .leading, spacing: 4) {
+                bubble
+                    .contextMenu {
+                        Button(action: copyMessage) { Label("Copy", systemImage: "doc.on.doc") }
+                        ShareLink(item: message.content) { Label("Share", systemImage: "square.and.arrow.up") }
+                    }
+                // Actions sit below the finished reply (never while it is still being written).
+                if !isUser && !isStaging {
+                    copyButton
+                        .transition(.opacity)
                 }
-            if !isUser {
-                Button(action: copyMessage) {
-                    Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")
-                        .foregroundStyle(copied ? Color.green : .secondary)
-                        .contentTransition(.symbolEffect(.replace))
-                }
-                .font(.system(size: 14))
-                .buttonStyle(.plain)
-                .padding(.top, 6)
-                .accessibilityLabel(copied ? "Copied" : "Copy")
-                .sensoryFeedback(.success, trigger: copied) { _, new in new }
             }
+            .frame(maxWidth: isUser ? 560 : 680, alignment: isUser ? .trailing : .leading)
+            .animation(.easeOut(duration: 0.25), value: isStaging)
+            if !isUser { Spacer(minLength: 0) }
         }
+    }
+
+    private var copyButton: some View {
+        Button(action: copyMessage) {
+            HStack(spacing: 5) {
+                Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")
+                    .contentTransition(.symbolEffect(.replace))
+                Text(copied ? "Copied" : "Copy")
+            }
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(copied ? Color.green : .secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(copied ? "Copied" : "Copy")
+        .sensoryFeedback(.success, trigger: copied) { _, new in new }
     }
 
     @ViewBuilder
@@ -86,26 +109,43 @@ struct MessageBubble: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(Color.accentColor, in: shape)
-                .frame(maxWidth: 560, alignment: .trailing)
                 .accessibilityLabel("You: \(message.content)")
+        } else if isStaging {
+            stagedBubble
         } else {
-            VStack(alignment: .leading, spacing: 6) {
-                if isStaging {
-                    StagedMarkdownView(
-                        content: StagedText.prepare(message.content, finished: !isStreaming),
-                        alphas: StagedText.alphas(eligible: eligible, at: now)
-                    )
-                    TypingCursor()
-                } else {
-                    MarkdownView(text: message.content)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(Theme.fill, in: shape)
-            .frame(maxWidth: 680, alignment: .leading)
-            .task(id: RevealKey(count: message.content.count, streaming: isStreaming)) { await drive() }
+            MarkdownView(text: message.content)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Theme.fill, in: shape)
         }
+    }
+
+    /// While being revealed, the bubble's height is measured and *animated*: the full text is laid out at its
+    /// natural size, and a clipping frame grows smoothly to it, so new sentences ease in instead of the whole
+    /// message jumping a line at a time.
+    private var stagedBubble: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            StagedMarkdownView(
+                content: StagedText.prepare(message.content, finished: !isStreaming),
+                alphas: StagedText.alphas(eligible: eligible, at: now)
+            )
+            // The cursor only shows while the network is still writing, so the end of the reply never snaps.
+            if isStreaming { TypingCursor() }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: StagedHeightKey.self, value: proxy.size.height)
+            }
+        )
+        .onPreferenceChange(StagedHeightKey.self) { stagedHeight = $0 }
+        .frame(height: stagedHeight > 0 ? stagedHeight : nil, alignment: .top)
+        .clipped()
+        .animation(.smooth(duration: 0.45), value: stagedHeight)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Theme.fill, in: shape)
+        .task(id: RevealKey(count: message.content.count, streaming: isStreaming)) { await drive() }
     }
 
     /// Drives the sentence-by-sentence fade: registers newly available units and ticks the clock until
@@ -116,18 +156,15 @@ struct MessageBubble: View {
         let arrival = Date.timeIntervalSinceReferenceDate
         while eligible.count < content.unitCount { eligible.append(arrival) }
 
-        var lastStarted = -1
         while !Task.isCancelled {
             now = Date.timeIntervalSinceReferenceDate
             let alphas = StagedText.alphas(eligible: eligible, at: now)
-            let started = alphas.filter { $0 > 0 }.count
-            if started != lastStarted {
-                lastStarted = started
-                onReveal()
-            }
             if alphas.allSatisfy({ $0 >= 1 }) {
                 if !isStreaming {
-                    isStaging = false   // finished: render the full text normally
+                    isStaging = false   // finished: render the full text normally, Copy row appears
+                    // Growth while typing is followed by the scroll view itself; after the final layout change
+                    // (Copy row) ask for one smooth scroll so nothing ends up hidden under the composer.
+                    try? await Task.sleep(for: .milliseconds(150))
                     onReveal()
                 }
                 return   // otherwise idle until more text arrives (the task restarts with it)
