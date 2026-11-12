@@ -1,5 +1,7 @@
 # AI Chat — test task
 
+![icon](Shared/Resources/Assets.xcassets/AppIcon.appiconset/icon-ios-1024.png)
+
 A ChatGPT-style chat app for iPhone (iOS 18+), with a macOS target. SwiftUI + SwiftData, streaming replies from OpenRouter.
 
 ## Run it
@@ -12,7 +14,7 @@ Optional, for running on a real device: copy `Config/Local.xcconfig.example` to 
 To use your own key: copy `.env.example` to `.env`, set `OPENROUTER_API_KEY`, run `Build.command`.
 
 ## Time
-<HOURS> h — **fill in the real number before sending.** For reference: the task file arrived at 12:54, the first commit was 13:02.
+5 hours of hands-on work (the task arrived at 12:54, the first commit was at 13:02; the author's own measurement of the working day).
 
 ## Tools
 - Claude Code (model: Claude Sonnet 5.5) for planning, code, tests and review.
@@ -42,7 +44,7 @@ The key is XOR-ed with a random salt by `scripts/obfuscate_key.swift` and stored
 - Offline Apple Foundation Models mode (optional item) — not implemented.
 - **Dictation does not work in the iOS Simulator (checked):** with permissions granted, Apple's recognizer fails ~0.3 s after start with `kLSRErrorDomain 300` — first on-device, then on the server fallback — before any audio is processed (iOS 26.5 simulator, Dictation enabled or not). The app now stops and shows that reason instead of silently switching off. Use a real iPhone or the Mac app to try dictation; real speech recognition was never exercised here.
 - Mac photo picker: loading a chosen photo failed on macOS (and the error toast wore a success checkmark). Fixed by loading through an image `Transferable` (with a `Data` fallback), adding the photo-library entitlement/usage string, and giving warnings their own icon — **the macOS picker itself could not be driven here, so please re-test it on a Mac**.
-- Photos and dictation were added last, under time pressure: their unit/UI tests are written (`Tests/PhotoSpeechTests.swift`, UI tests for dictation and photos are described in `docs/TESTING.md`) but were **not run**; the project compiles (incl. test targets). I checked the vision model with a direct API request and the composer in a simulator screenshot. Real speech recognition was not exercised (no spoken audio in the simulator); a tap on the photo picker was not automated. Full-screen photo viewing is not implemented.
+- Photos and dictation were added last. Their unit tests and the UI tests for the photo flow ran green in the final full run; real speech recognition was never exercised (it fails in the iOS Simulator), and the macOS photo picker could not be driven here. Full-screen photo viewing is not implemented.
 - Onboarding uses SF Symbols instead of the robot illustrations from the design kit (no exported assets); Urbanist font not bundled (system font used).
 - Login/sign-up/OTP, the Pro banner, Notifications, Security and Logout from the design kit are intentionally skipped (no accounts or backend in the task).
 - Only an iOS 26.5 simulator was available for testing; iOS 18 is covered by API choice, not by a run on an iOS 18 runtime.
@@ -52,7 +54,7 @@ The key is XOR-ed with a random salt by `scripts/obfuscate_key.swift` and stored
 - The macOS target builds, but I did not run or visually check it.
 
 ## How it was verified
-- 38 unit tests (plus 2 opt-in live tests, skipped by default) and 2 UI tests (`xcodebuild test`): SSE parser, error mapping, key round-trip, and `ChatEngine` with a mock backend (send, stream, failure leaves no empty bubble, retry after failure and after mid-stream error, stop keeps partial, blank input ignored, context cap). One of these caught a real bug (Retry did nothing after a mid-stream error).
+- 69 unit tests (plus 3 opt-in live tests, skipped by default) and 8 UI tests (`xcodebuild test`): SSE parser, error mapping, key round-trip, and `ChatEngine` with a mock backend (send, stream, failure leaves no empty bubble, retry after failure and after mid-stream error, stop keeps partial, blank input ignored, context cap). One of these caught a real bug (Retry did nothing after a mid-stream error).
 - Opt-in live tests against the real API: `TEST_RUNNER_RUN_LIVE_TESTS=1 xcodebuild test ...` — streamed a real reply; an invalid key maps to "unauthorized".
 - `Build.command` run end to end (generate, build, install, launch); iOS and macOS targets both build.
 - Checked that the built `.app` contains no plain-text key.
