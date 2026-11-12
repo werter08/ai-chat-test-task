@@ -14,13 +14,15 @@ struct MessageBubble: View {
         HStack {
             if isUser { Spacer(minLength: 48) }
             Text(rendered)
+                .font(.system(size: 16))
+                .lineSpacing(3)
                 .textSelection(.enabled)
                 .foregroundStyle(isUser ? Color.white : Color.primary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(
-                    isUser ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.primary.opacity(0.08)),
-                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    isUser ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Theme.fill),
+                    in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
                 )
                 .frame(maxWidth: 560, alignment: isUser ? .trailing : .leading)
                 .accessibilityLabel("\(isUser ? "You" : "Assistant"): \(message.content)")
@@ -45,7 +47,7 @@ struct TypingIndicator: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
-        .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Theme.fill, in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
         .accessibilityLabel("Assistant is typing")
     }
 }
@@ -58,7 +60,7 @@ struct ErrorBanner: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
                 .font(.title3)
-                .foregroundStyle(.orange)
+                .foregroundStyle(Color.accentColor)
             VStack(alignment: .leading, spacing: 2) {
                 Text(error.title).font(.subheadline.weight(.semibold))
                 Text(error.message)
@@ -71,7 +73,7 @@ struct ErrorBanner: View {
                 .controlSize(.small)
         }
         .padding(12)
-        .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
         .accessibilityElement(children: .combine)
     }
 
@@ -85,6 +87,7 @@ struct ErrorBanner: View {
     }
 }
 
+/// Empty chat: greeting layout from the design kit, plus tappable starter prompts.
 struct EmptyChatView: View {
     let onPick: (String) -> Void
 
@@ -95,25 +98,39 @@ struct EmptyChatView: View {
     ]
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 44))
-                .foregroundStyle(Color.accentColor)
-            Text("How can I help?")
-                .font(.title2.weight(.semibold))
-            VStack(spacing: 8) {
+        VStack(spacing: Theme.spacing3) {
+            VStack(spacing: Theme.spacing2) {
+                Text("Hey there 👋")
+                    .font(.display(32))
+                Text("I'm your AI buddy — ready to chat, answer, and assist.")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Text("Just say the word.")
+                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, Theme.spacing1)
+            }
+            VStack(spacing: Theme.spacing2) {
                 ForEach(suggestions, id: \.self) { suggestion in
                     Button(suggestion) { onPick(suggestion) }
-                        .buttonStyle(.bordered)
-                        .controlSize(.regular)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color.accentColor)
+                        .padding(.horizontal, Theme.spacing3)
+                        .padding(.vertical, 10)
+                        .background(Color.accentColor.opacity(0.10), in: Capsule())
+                        .buttonStyle(.plain)
                         .multilineTextAlignment(.center)
                 }
             }
+            .padding(.top, Theme.spacing2)
         }
-        .padding()
+        .padding(Theme.spacing3)
+        .frame(maxWidth: 480)
     }
 }
 
+/// Composer from the design kit: rounded input ("Ask anything") + red rounded-square send button.
 struct ComposerView: View {
     @Binding var text: String
     let isGenerating: Bool
@@ -125,32 +142,36 @@ struct ComposerView: View {
     }
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            TextField("Message", text: $text, axis: .vertical)
+        HStack(alignment: .bottom, spacing: Theme.spacing2) {
+            TextField("Ask anything", text: $text, axis: .vertical)
                 .lineLimit(1...6)
                 .textFieldStyle(.plain)
+                .font(.system(size: 16))
                 .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .frame(minHeight: Theme.controlHeight)
+                .background(Theme.fill, in: RoundedRectangle(cornerRadius: Theme.controlRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.controlRadius, style: .continuous)
+                        .strokeBorder(Theme.border, lineWidth: 1)
+                )
                 .onSubmit { if canSend && !isGenerating { onSend() } }
 
-            if isGenerating {
-                Button(action: onStop) {
-                    Image(systemName: "stop.circle.fill").font(.system(size: 34))
-                }
-                .accessibilityLabel("Stop generating")
-            } else {
-                Button(action: onSend) {
-                    Image(systemName: "arrow.up.circle.fill").font(.system(size: 34))
-                }
-                .disabled(!canSend)
-                .accessibilityLabel("Send message")
+            Button(action: isGenerating ? onStop : onSend) {
+                Image(systemName: isGenerating ? "stop.fill" : "paperplane.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: Theme.controlHeight, height: Theme.controlHeight)
+                    .background(
+                        Color.accentColor.opacity(isGenerating || canSend ? 1 : 0.4),
+                        in: RoundedRectangle(cornerRadius: Theme.controlRadius, style: .continuous)
+                    )
             }
+            .buttonStyle(.plain)
+            .disabled(!isGenerating && !canSend)
+            .accessibilityLabel(isGenerating ? "Stop generating" : "Send message")
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(Color.accentColor)
-        .padding(.horizontal)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Theme.spacing3)
+        .padding(.vertical, Theme.spacing2)
         .background(.bar)
     }
 }
