@@ -1,0 +1,74 @@
+name: AIChat
+options:
+  bundleIdPrefix: com.example
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "18.0"
+    macOS: "15.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  AIChat:
+    type: application
+    platform: iOS
+    sources:
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.aichat
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: AI Chat
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+  AIChatMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: Shared
+    entitlements:
+      path: Mac/AIChatMac.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+    settings:
+      base:
+        PRODUCT_NAME: AIChat
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.aichat.mac
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: AI Chat
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: YES
+  AIChatTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: AIChat
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.aichat.tests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  AIChat:
+    build:
+      targets:
+        AIChat: all
+    test:
+      targets:
+        - AIChatTests
+  AIChatMac:
+    build:
+      targets:
+        AIChatMac: all
