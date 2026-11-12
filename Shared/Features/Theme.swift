@@ -1,4 +1,9 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#else
+import AppKit
+#endif
 
 /// Design tokens from the design kit (8pt grid, 16px cards, 12px controls, red accent from AccentColor).
 enum Theme {
@@ -37,5 +42,21 @@ struct PrimaryButtonStyle: ButtonStyle {
                 in: RoundedRectangle(cornerRadius: Theme.controlRadius, style: .continuous)
             )
             .opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.4)
+    }
+}
+
+enum Brand {
+    /// Header title from the design kit; change here to rename the in-app brand.
+    static let name = "Chatterly"
+}
+
+enum Clipboard {
+    static func copy(_ text: String) {
+        #if os(iOS)
+        UIPasteboard.general.string = text
+        #else
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #endif
     }
 }
