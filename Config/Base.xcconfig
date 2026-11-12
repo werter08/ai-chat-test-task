@@ -1,0 +1,4 @@
+// Defaults for the iOS app target. Local overrides (signing team, your own bundle id) go in Local.xcconfig,
+// which is gitignored — copy Local.xcconfig.example to Local.xcconfig.
+PRODUCT_BUNDLE_IDENTIFIER = com.example.aichat
+#include? "Local.xcconfig"

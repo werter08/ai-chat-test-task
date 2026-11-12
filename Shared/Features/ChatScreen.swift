@@ -5,7 +5,6 @@ import SwiftUI
 struct ChatScreen: View {
     let chat: Chat
     let onMenu: () -> Void
-    let onHistory: () -> Void
     let onNewChat: () -> Void
 
     @Environment(\.modelContext) private var context
@@ -22,14 +21,13 @@ struct ChatScreen: View {
 
         VStack(spacing: 0) {
             header
-            ModeChips(selected: chat.mode, onSelect: toggleMode)
-                .padding(.bottom, Theme.spacing2)
 
             if showEmpty {
                 EmptyChatContent(
                     mode: chat.mode,
                     userName: userName,
-                    onSelectMode: toggleMode,
+                    onSelectMode: setMode,
+                    onClearMode: { setMode(nil) },
                     onPrompt: send
                 )
             } else {
@@ -69,10 +67,9 @@ struct ChatScreen: View {
                 .font(.system(size: 20, weight: .semibold, design: .rounded))
                 .foregroundStyle(Color.accentColor)
             HStack(spacing: Theme.spacing1) {
-                iconButton("circle.grid.2x2", label: "Settings", action: onMenu)
+                iconButton("line.3.horizontal", label: "Menu", action: onMenu)
                 Spacer()
                 iconButton("square.and.pencil", label: "New chat", action: onNewChat)
-                iconButton("clock", label: "History", action: onHistory)
             }
         }
         .padding(.horizontal, Theme.spacing2)
@@ -126,8 +123,8 @@ struct ChatScreen: View {
         return nil
     }
 
-    private func toggleMode(_ mode: ChatMode) {
-        chat.mode = (chat.mode == mode) ? nil : mode
+    private func setMode(_ mode: ChatMode?) {
+        chat.mode = mode
         try? context.save()
     }
 

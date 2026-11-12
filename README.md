@@ -7,6 +7,8 @@ Double-click **`Build.command`** in Finder. It embeds the API key (if `.env` has
 
 The submitted archive already contains the obfuscated key in `Shared/Security/Secrets.generated.swift`, so the app works right after the build with no setup. (The public GitHub repo only has an empty placeholder there, on purpose.)
 
+Optional, for running on a real device: copy `Config/Local.xcconfig.example` to `Config/Local.xcconfig` (gitignored) and set your own bundle id / signing team; it survives `xcodegen generate`.
+
 To use your own key: copy `.env.example` to `.env`, set `OPENROUTER_API_KEY`, run `Build.command`.
 
 ## Time
@@ -24,8 +26,8 @@ The key is XOR-ed with a random salt by `scripts/obfuscate_key.swift` and stored
 ## What works
 - Streaming replies as they are generated; **Stop** keeps the partial reply.
 - Opens straight into an empty chat with a greeting and mode cards. Modes (Writing, Creative, Conversation, Personal, Developer) change the system prompt and offer quick prompts.
-- Multiple chats: new chat (pencil icon), History (clock icon) with swipe-to-delete and delete-all, and Search with saved recent searches; history persists across restarts (SwiftData).
-- Settings (grid icon): your name, custom instructions added to every chat, System/Light/Dark theme, delete all chats, Help and Privacy pages.
+- Multiple chats: a full-screen sidebar (menu icon) with search, a **New chat** button and your history (swipe to delete); history persists across restarts (SwiftData). Quick prompts are bordered, tappable bubbles.
+- Settings (sidebar footer, a regular page): your name, custom instructions added to every chat, System/Light/Dark theme, delete all chats, Help and Privacy pages.
 - States: empty list, empty chat (greeting + starter prompts), typing indicator, and errors with **Retry** — no network, timeout, invalid key, limit reached (402/429), model unavailable, server error, missing key. After a restart, a chat ending in an unanswered message also offers Retry.
 - Light and dark themes; design kit applied (red accent, 16px cards, 48px controls, onboarding on first launch).
 - iOS 18 minimum (no newer APIs used), macOS 15 target `AIChatMac` sharing the same code.
@@ -42,11 +44,11 @@ The key is XOR-ed with a random salt by `scripts/obfuscate_key.swift` and stored
 - The macOS target builds, but I did not run or visually check it.
 
 ## How it was verified
-- 29 unit tests (2 more are opt-in live tests) (`xcodebuild test`): SSE parser, error mapping, key round-trip, and `ChatEngine` with a mock backend (send, stream, failure leaves no empty bubble, retry after failure and after mid-stream error, stop keeps partial, blank input ignored, context cap). One of these caught a real bug (Retry did nothing after a mid-stream error).
+- 25 unit tests (plus 2 opt-in live tests, skipped by default) and 1 UI test (`xcodebuild test`): SSE parser, error mapping, key round-trip, and `ChatEngine` with a mock backend (send, stream, failure leaves no empty bubble, retry after failure and after mid-stream error, stop keeps partial, blank input ignored, context cap). One of these caught a real bug (Retry did nothing after a mid-stream error).
 - Opt-in live tests against the real API: `TEST_RUNNER_RUN_LIVE_TESTS=1 xcodebuild test ...` — streamed a real reply; an invalid key maps to "unauthorized".
 - `Build.command` run end to end (generate, build, install, launch); iOS and macOS targets both build.
 - Checked that the built `.app` contains no plain-text key.
-- Screenshots of onboarding and the home screen on the simulator. Tap-through of History, Search, Settings and sending a message in the running UI was not automated.
+- A UI test (`UITests/`) taps through home, a mode, the sidebar and Settings, and asserts that switching to Dark really turns the Settings page and the home screen dark (it samples the background brightness). Sending a message in the UI was not automated.
 
 ## Docs
 `docs/TASK.md` (task), `docs/PLAN.md` (plan), `CLAUDE.md` (agent rules), `ai-logs/` (AI session logs, secrets redacted).

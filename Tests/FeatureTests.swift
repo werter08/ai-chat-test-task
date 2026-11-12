@@ -45,22 +45,3 @@ final class ChatModeTests: XCTestCase {
         }
     }
 }
-
-final class RecentSearchesTests: XCTestCase {
-    func testNewestFirstDedupedAndCapped() {
-        var items: [String] = []
-        for term in ["a", "b", "c"] { items = RecentSearches.adding(term, to: items) }
-        XCTAssertEqual(items, ["c", "b", "a"])
-        items = RecentSearches.adding("B", to: items)
-        XCTAssertEqual(items, ["B", "c", "a"])
-        for i in 0..<20 { items = RecentSearches.adding("t\(i)", to: items) }
-        XCTAssertEqual(items.count, RecentSearches.limit)
-    }
-
-    func testBlankIsIgnoredAndCodecRoundTrips() {
-        XCTAssertEqual(RecentSearches.adding("   ", to: ["x"]), ["x"])
-        let raw = RecentSearches.encode(["one", "two"])
-        XCTAssertEqual(RecentSearches.decode(raw), ["one", "two"])
-        XCTAssertEqual(RecentSearches.decode("not json"), [])
-    }
-}

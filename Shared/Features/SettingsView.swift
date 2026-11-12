@@ -1,9 +1,8 @@
 import SwiftData
 import SwiftUI
 
-/// Settings sheet (grid icon): profile, personalization, appearance, data and about.
+/// Settings page (pushed from the sidebar footer): profile, personalization, appearance, data and about.
 struct SettingsView: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
     @Environment(ChatEngine.self) private var engine
     @Query private var chats: [Chat]
@@ -18,8 +17,7 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
+        Form {
                 Section("Profile") {
                     HStack(spacing: Theme.spacing3) {
                         Text(initial)
@@ -72,18 +70,11 @@ struct SettingsView: View {
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-            }
             .confirmationDialog("Delete all chats?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Delete all", role: .destructive) { ChatStore.deleteAll(chats, engine: engine, context: context) }
             } message: {
                 Text("This can't be undone.")
             }
-        }
-        #if os(macOS)
-        .frame(minWidth: 420, minHeight: 520)
-        #endif
     }
 
     private static var version: String {

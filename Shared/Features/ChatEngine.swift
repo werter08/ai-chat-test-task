@@ -13,8 +13,8 @@ final class ChatEngine {
     }
 
     /// How many recent messages are sent as context (keeps requests small for free models).
-    static let maxContextMessages = 30
-    static let systemPrompt = "You are a helpful, concise assistant. Answer in the user's language."
+    nonisolated static let maxContextMessages = 30
+    nonisolated static let systemPrompt = "You are a helpful, concise assistant. Answer in the user's language."
 
     private(set) var states: [UUID: State] = [:]
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]

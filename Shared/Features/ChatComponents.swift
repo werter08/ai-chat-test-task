@@ -131,36 +131,6 @@ struct StopPill: View {
     }
 }
 
-/// Mode chips under the header (Writing / Creative / …). Tapping the selected chip returns to general chat.
-struct ModeChips: View {
-    let selected: ChatMode?
-    let onSelect: (ChatMode) -> Void
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Theme.spacing2) {
-                ForEach(ChatMode.allCases) { mode in
-                    let isSelected = mode == selected
-                    Button { onSelect(mode) } label: {
-                        Text(mode.title)
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(isSelected ? Color.white : Color.primary.opacity(0.7))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(
-                                isSelected ? Color.accentColor : Theme.fill,
-                                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
-                }
-            }
-            .padding(.horizontal, Theme.spacing3)
-        }
-    }
-}
-
 struct ModeCard: View {
     let mode: ChatMode
     let isSelected: Bool
@@ -195,7 +165,7 @@ struct ModeCard: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
-                    .strokeBorder(isSelected ? Color.accentColor.opacity(0.6) : .clear, lineWidth: 1)
+                    .strokeBorder(isSelected ? Color.accentColor.opacity(0.6) : Theme.border, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -208,6 +178,7 @@ struct EmptyChatContent: View {
     let mode: ChatMode?
     let userName: String
     let onSelectMode: (ChatMode) -> Void
+    let onClearMode: () -> Void
     let onPrompt: (String) -> Void
 
     private var greeting: String {
@@ -254,6 +225,21 @@ struct EmptyChatContent: View {
 
     private func modeIntro(_ mode: ChatMode) -> some View {
         VStack(alignment: .leading, spacing: Theme.spacing3) {
+            Button(action: onClearMode) {
+                HStack(spacing: 6) {
+                    Text(mode.title)
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                }
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.accentColor, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(mode.title) mode. Tap to leave this mode")
+
             VStack(spacing: Theme.spacing2) {
                 Text(mode.introTitle).font(.system(size: 18, weight: .semibold, design: .rounded))
                 Text(mode.intro)
@@ -262,26 +248,36 @@ struct EmptyChatContent: View {
             }
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
-            .padding(.top, Theme.spacing3)
 
-            Text("🎯 Quick Prompt")
+            Text("🎯 Quick Prompts")
                 .font(.system(size: 15, weight: .semibold))
-                .padding(.top, Theme.spacing3)
-            VStack(alignment: .leading, spacing: 4) {
+                .padding(.top, Theme.spacing2)
+            VStack(spacing: Theme.spacing2) {
                 ForEach(mode.quickPrompts, id: \.self) { prompt in
                     Button { onPrompt(prompt) } label: {
-                        Text("•  \(prompt) →")
-                            .font(.system(size: 14))
-                            .foregroundStyle(Color.accentColor)
-                            .multilineTextAlignment(.leading)
-                            .padding(.vertical, 6)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack(spacing: Theme.spacing2) {
+                            Text(prompt)
+                                .font(.system(size: 15, weight: .medium))
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundStyle(Color.accentColor)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
+                                .strokeBorder(Color.accentColor.opacity(0.45), lineWidth: 1)
+                        )
                     }
                     .buttonStyle(.plain)
                 }
             }
         }
         .padding(.horizontal, Theme.spacing3)
+        .padding(.bottom, Theme.spacing3)
     }
 }
 
