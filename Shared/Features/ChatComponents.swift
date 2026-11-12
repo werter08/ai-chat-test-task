@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 private struct StagedHeightKey: PreferenceKey {
@@ -100,14 +101,24 @@ struct MessageBubble: View {
     @ViewBuilder
     private var bubble: some View {
         if isUser {
-            Text(InlineMarkdown.attributed(message.content))
-                .font(.system(size: 16))
-                .lineSpacing(3)
-                .foregroundStyle(Color.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Color.accentColor, in: shape)
-                .accessibilityLabel("You: \(message.content)")
+            let hasText = !message.content.isEmpty
+            VStack(alignment: .leading, spacing: 8) {
+                if !message.attachments.isEmpty {
+                    AttachmentGrid(attachments: message.sortedAttachments)
+                }
+                if hasText {
+                    Text(InlineMarkdown.attributed(message.content))
+                        .font(.system(size: 16))
+                        .lineSpacing(3)
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, message.attachments.isEmpty ? 0 : 6)
+                }
+            }
+            .padding(.horizontal, hasText && message.attachments.isEmpty ? 14 : 6)
+            .padding(.vertical, hasText && message.attachments.isEmpty ? 10 : 6)
+            .padding(.bottom, hasText && !message.attachments.isEmpty ? 4 : 0)
+            .background(Color.accentColor, in: shape)
+            .accessibilityElement(children: .contain)
         } else if isStaging {
             stagedBubble
         } else {
@@ -198,6 +209,28 @@ struct GoDownButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Go down")
+    }
+}
+
+/// Photos of a sent message, shown above its text inside the bubble.
+struct AttachmentGrid: View {
+    let attachments: [Attachment]
+
+    var body: some View {
+        if attachments.count == 1, let only = attachments.first {
+            photo(only, size: 220)
+        } else {
+            LazyVGrid(columns: [GridItem(.fixed(108), spacing: 6), GridItem(.fixed(108), spacing: 6)], spacing: 6) {
+                ForEach(attachments) { photo($0, size: 108) }
+            }
+            .frame(width: 222, alignment: .leading)
+        }
+    }
+
+    private func photo(_ attachment: Attachment, size: CGFloat) -> some View {
+        PhotoThumbnail(data: attachment.data, size: size, corner: 12)
+            .accessibilityLabel("Attached photo")
+            .accessibilityAddTraits(.isImage)
     }
 }
 
@@ -464,36 +497,54 @@ enum ComposerSize {
 
 /// Composer from the design kit: rounded input + red rounded-square send/stop button.
 /// While focused the field glows; the corner button cycles compact → 30% → full screen → compact.
+/// Photos picked for the message appear in a strip *above* the text box; the mic dictates into the box.
 struct ComposerView: View {
     @Binding var text: String
     @Binding var size: ComposerSize
+    @Binding var images: [DraftImage]
     let isGenerating: Bool
     let availableHeight: CGFloat
     let onSend: () -> Void
     let onStop: () -> Void
 
+    @Environment(SpeechInput.self) private var speech
+    @Environment(Toast.self) private var toast
     @FocusState private var focused: Bool
+    @State private var pickerItems: [PhotosPickerItem] = []
 
     private var canSend: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !images.isEmpty
     }
+
+    private var photosFull: Bool { images.count >= ImageProcessing.maxPhotosPerMessage }
 
     private var shape: RoundedRectangle {
         RoundedRectangle(cornerRadius: Theme.controlRadius, style: .continuous)
     }
 
+    private var placeholder: String { speech.isListening ? "Listening…" : "Ask me anything…" }
+
     var body: some View {
-        // Compact: field and send button side by side. Expanded (30% / full): editor on top, full-width send below.
-        Group {
+        VStack(spacing: Theme.spacing2) {
+            if !images.isEmpty { attachmentStrip }
+
+            // Compact: tools, field and send button side by side. Expanded (30% / full): editor on top, tools and a
+            // full-width send button below.
             if size == .compact {
                 HStack(alignment: .bottom, spacing: Theme.spacing2) {
+                    photoButton.padding(.bottom, 4)
                     field
+                    micButton.padding(.bottom, 4)
                     sendButton(wide: false)
                 }
             } else {
                 VStack(spacing: Theme.spacing2) {
                     field
-                    sendButton(wide: true)
+                    HStack(spacing: Theme.spacing2) {
+                        photoButton
+                        micButton
+                        sendButton(wide: true)
+                    }
                 }
             }
         }
@@ -505,6 +556,100 @@ struct ComposerView: View {
             if size == .full { Color.clear } else { Rectangle().fill(.bar).ignoresSafeArea(edges: .bottom) }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: size)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: images.count)
+    }
+
+    // MARK: Photos
+
+    private var attachmentStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Theme.spacing2) {
+                ForEach(images) { image in
+                    ZStack(alignment: .topTrailing) {
+                        PhotoThumbnail(data: image.jpeg, size: 68)
+                            .accessibilityLabel("Photo to send")
+                            .accessibilityAddTraits(.isImage)
+                        Button { images.removeAll { $0.id == image.id } } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 20))
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, Color.black.opacity(0.65))
+                        }
+                        .buttonStyle(.plain)
+                        .offset(x: 6, y: -6)
+                        .accessibilityLabel("Remove photo")
+                    }
+                }
+            }
+            .padding(.top, 8)
+            .padding(.trailing, 8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var photoButton: some View {
+        PhotosPicker(
+            selection: $pickerItems,
+            maxSelectionCount: max(1, ImageProcessing.maxPhotosPerMessage - images.count),
+            matching: .images
+        ) {
+            Image(systemName: "photo.on.rectangle.angled")
+                .font(.system(size: 17))
+                .foregroundStyle(Color.primary.opacity(0.8))
+                .frame(width: 40, height: 40)
+                .background(Theme.fill, in: shape)
+                .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .disabled(photosFull)
+        .opacity(photosFull ? 0.4 : 1)
+        .accessibilityLabel("Add photo")
+        .onChange(of: pickerItems) { loadPickedPhotos() }
+    }
+
+    private func loadPickedPhotos() {
+        let items = pickerItems
+        guard !items.isEmpty else { return }
+        pickerItems = []
+        Task {
+            for item in items {
+                guard images.count < ImageProcessing.maxPhotosPerMessage else { break }
+                guard let data = try? await item.loadTransferable(type: Data.self) else {
+                    toast.show("That photo couldn't be loaded.")
+                    continue
+                }
+                let jpeg = await Task.detached { ImageProcessing.downscaledJPEG(from: data) }.value
+                if let jpeg {
+                    images.append(DraftImage(jpeg: jpeg))
+                } else {
+                    toast.show("That photo couldn't be read.")
+                }
+            }
+        }
+    }
+
+    // MARK: Dictation
+
+    private var micButton: some View {
+        Button(action: toggleDictation) {
+            Image(systemName: speech.isListening ? "mic.fill" : "mic")
+                .font(.system(size: 17))
+                .foregroundStyle(speech.isListening ? Color.white : Color.primary.opacity(0.8))
+                .frame(width: 40, height: 40)
+                .background(speech.isListening ? Color.accentColor : Theme.fill, in: shape)
+                .symbolEffect(.pulse, isActive: speech.isListening)
+                .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(speech.isListening ? "Stop dictation" : "Dictate")
+    }
+
+    private func toggleDictation() {
+        speech.toggle(
+            currentText: text,
+            apply: { text = $0 },
+            report: { toast.show($0) }
+        )
     }
 
     // MARK: Field
@@ -512,7 +657,7 @@ struct ComposerView: View {
     private var field: some View {
         ZStack(alignment: .topTrailing) {
             if size == .compact {
-                TextField("Ask me anything…", text: $text, axis: .vertical)
+                TextField("Ask me anything…", text: $text, prompt: Text(placeholder), axis: .vertical)
                     .lineLimit(1...6)
                     .textFieldStyle(.plain)
                     .font(.system(size: 16))
@@ -528,15 +673,16 @@ struct ComposerView: View {
         }
         .frame(maxHeight: size == .full ? .infinity : nil)
         .background(focused ? Color.accentColor.opacity(0.06) : Theme.fill, in: shape)
-        .overlay(shape.strokeBorder(focused ? Color.accentColor : Theme.border, lineWidth: focused ? 2 : 1))
-        .shadow(color: Color.accentColor.opacity(focused ? 0.35 : 0), radius: focused ? 10 : 0)
+        .overlay(shape.strokeBorder(focused || speech.isListening ? Color.accentColor : Theme.border, lineWidth: focused || speech.isListening ? 2 : 1))
+        .shadow(color: Color.accentColor.opacity(focused || speech.isListening ? 0.35 : 0), radius: focused || speech.isListening ? 10 : 0)
         .animation(.easeInOut(duration: 0.2), value: focused)
+        .animation(.easeInOut(duration: 0.2), value: speech.isListening)
     }
 
     private var editor: some View {
         ZStack(alignment: .topLeading) {
             if text.isEmpty {
-                Text("Ask me anything…")
+                Text(placeholder)
                     .font(.system(size: 16))
                     .foregroundStyle(.tertiary)
                     .padding(.horizontal, 5)

@@ -5,6 +5,11 @@
 - **UI tests** (`UITests/`, XCUITest on the simulator): walkthrough of home → mode → drawer → Settings → appearance; dark mode actually applies (samples the page background brightness); drawer dim reaches the safe areas and closes on tap; the drawer opens repeatedly after every way of closing; a reopened chat shows its bottom content immediately; Markdown reply renders (no raw `##`) and Copy flips to "Copied"; composer cycles compact → 30 % → full screen with the Send button below the editor; the reply is typed out progressively, stays at the top, shows **Go down** only when ready, and tapping it reaches Copy; Stop mid-stream shows a note and no error; Share only on long press.
 - **Live API tests** (opt-in): `TEST_RUNNER_RUN_LIVE_TESTS=1 xcodebuild test …` — a real streamed reply, and an invalid key maps to "unauthorized".
 
+## Added last, written but NOT run (time)
+- `Tests/PhotoSpeechTests.swift`: transcript merging, `SpeechInput` with a scripted service, request encoding (plain and multi-part), vision-model choice, image downscaling, engine behaviour with photos (photo-only message, ≤ 4 photos, only the last 3 photo messages carry pictures, cascade delete), and an opt-in live vision test. The whole project including these targets compiles; they have not been executed.
+- UI tests still to add/run: dictation fills the box before sending (`-uiTestFakeSpeech`), a seeded photo previews above the text box and above the message text once sent (`-uiTestSeedPhoto`), removing a photo. `testComposerExpandsToThirdThenFullScreen` was adjusted for the new row (tools next to Send) but not re-run.
+- Verified by hand: the vision model answers correctly to a request with an image (direct API call), and the composer layout (photo strip above the text box, photo and mic buttons) in a simulator screenshot. Not verified: real speech recognition, tapping the system photo picker.
+
 ## Running
 ```
 xcodegen generate

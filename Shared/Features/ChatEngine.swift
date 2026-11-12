@@ -14,6 +14,8 @@ final class ChatEngine {
 
     /// How many recent messages are sent as context (keeps requests small for free models).
     nonisolated static let maxContextMessages = 30
+    /// Only the most recent messages that carry photos are sent with their pictures (request size).
+    nonisolated static let maxPhotoMessages = 3
     nonisolated static let stoppedNote = "You stopped the response."
     nonisolated static let systemPrompt = "You are a helpful, concise assistant. Answer in the user's language."
 
@@ -35,15 +37,21 @@ final class ChatEngine {
 
     // MARK: Actions
 
-    func send(_ text: String, in chat: Chat, context: ModelContext) {
+    /// Sends a user message. `images` are already downscaled JPEGs; a message may be photos only.
+    func send(_ text: String, images: [Data] = [], in chat: Chat, context: ModelContext) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !state(for: chat).isGenerating else { return }
+        guard !trimmed.isEmpty || !images.isEmpty, !state(for: chat).isGenerating else { return }
 
         let message = Message(role: .user, content: trimmed)
         message.chat = chat
         context.insert(message)
+        for (index, data) in images.prefix(ImageProcessing.maxPhotosPerMessage).enumerated() {
+            let attachment = Attachment(data: data, createdAt: Date.now.addingTimeInterval(Double(index) * 0.001))
+            attachment.message = message
+            context.insert(attachment)
+        }
         if chat.title == Chat.defaultTitle {
-            chat.title = Self.makeTitle(from: trimmed)
+            chat.title = Self.makeTitle(from: trimmed.isEmpty ? "Photo" : trimmed)
         }
         chat.updatedAt = .now
         try? context.save()
@@ -133,7 +141,19 @@ final class ChatEngine {
     // MARK: Helpers
 
     nonisolated static func buildRequest(from messages: [Message], mode: ChatMode? = nil, profile: UserProfile = UserProfile()) -> [APIMessage] {
-        let recent = messages.filter { $0.role != .note }.suffix(maxContextMessages).map { APIMessage(role: $0.roleRaw, content: $0.content) }
+        let conversation = messages.filter { $0.role != .note }.suffix(maxContextMessages)
+        let withPhotos = Set(conversation.filter { !$0.attachments.isEmpty }.suffix(maxPhotoMessages).map(\.id))
+        let recent = conversation.map { message -> APIMessage in
+            guard !message.attachments.isEmpty else {
+                return APIMessage(role: message.roleRaw, content: message.content)
+            }
+            let urls = withPhotos.contains(message.id)
+                ? message.sortedAttachments.map { "data:image/jpeg;base64," + $0.data.base64EncodedString() }
+                : []
+            // A photo-only message still needs some text; older photos that are no longer sent become a marker.
+            let text = message.content.isEmpty ? (urls.isEmpty ? "[photo]" : "Describe this image.") : message.content
+            return APIMessage(role: message.roleRaw, content: text, imageURLs: urls)
+        }
         return [APIMessage(role: "system", content: makeSystemPrompt(mode: mode, profile: profile))] + recent
     }
 

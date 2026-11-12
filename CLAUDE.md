@@ -9,6 +9,8 @@ Project: **AIChat**, a ChatGPT-style iOS 18+ chat app (plus a macOS target). Tas
 - Deployment targets: iOS 18.0, macOS 15.0. iOS 18 APIs (`ScrollPosition`, `onScrollGeometryChange`) are fine; anything newer needs `if #available`.
 - AI backend: OpenRouter (`/api/v1/chat/completions`, `stream: true`). Model id comes from `.env`; default `baidu/ernie-5.5-flash-preview:free` — the **`:free` suffix is required** (the bare id returns 404).
 
+- Photos go to the vision model (`nvidia/nemotron-3.5-super-vl`) — any request containing an image; text-only requests use the text model. Dictation fills the text box and never auto-sends.
+
 ## Layout
 - `Shared/` — all app code, compiled into both the iOS and macOS targets. `#if os(...)` only when unavoidable.
   `App/` entry + debug fixtures · `Models/` · `Networking/` · `Security/` · `Features/` views, `ChatEngine`, Markdown, reveal logic.
@@ -27,6 +29,6 @@ Project: **AIChat**, a ChatGPT-style iOS 18+ chat app (plus a macOS target). Tas
 ## Commands
 - Build + run on simulator: double-click `Build.command` (or `bash Build.command`). It reads the bundle id from the built app, so a local override is fine.
 - Tests: `xcodegen generate && xcodebuild test -project AIChat.xcodeproj -scheme AIChat -destination 'platform=iOS Simulator,name=iPhone 17' CODE_SIGNING_ALLOWED=NO` (add `TEST_RUNNER_SHOT_DIR=<dir>` for UI-test screenshots, `TEST_RUNNER_RUN_LIVE_TESTS=1` for the live API tests).
-- Debug launch flags (Debug builds only): `-uiTestInMemory`, `-uiTestSeedMarkdown`, `-uiTestFakeStream`.
+- Debug launch flags (Debug builds only): `-uiTestInMemory`, `-uiTestSeedMarkdown`, `-uiTestFakeStream`, `-uiTestFakeSpeech`, `-uiTestSeedPhoto`.
 - AI logs for submission: `bash scripts/export_ai_logs.sh` (removes images, keys, personal data; re-run at the very end).
 - If `xcodebuild` hangs even for `-list`, a stale `SWBBuildService` is the usual cause — stop it and retry.

@@ -30,6 +30,8 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: AI Chat uses the microphone so you can dictate messages.
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: AI Chat turns your speech into text for the message box. Where the language supports it this happens on the device.
   AIChatMac:
     type: application
     platform: macOS
@@ -40,6 +42,7 @@ targets:
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
+        com.apple.security.device.audio-input: true
     settings:
       base:
         PRODUCT_NAME: AIChat
@@ -47,6 +50,8 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: AI Chat
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: AI Chat uses the microphone so you can dictate messages.
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: AI Chat turns your speech into text for the message box. Where the language supports it this happens on the device.
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_IDENTITY: "-"

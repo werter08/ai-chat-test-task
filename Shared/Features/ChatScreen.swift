@@ -10,8 +10,11 @@ struct ChatScreen: View {
     @Environment(\.modelContext) private var context
     @Environment(ChatEngine.self) private var engine
     @Environment(Toast.self) private var toast
+    @Environment(SpeechInput.self) private var speech
     @AppStorage(UserProfile.nameKey) private var userName = ""
     @State private var draft = ""
+    /// Photos picked for the message being written (shown above the text box).
+    @State private var draftImages: [DraftImage] = ChatScreen.initialImages()
     @State private var composerSize: ComposerSize = .compact
     /// True when part of the conversation is below the visible area.
     @State private var hasMoreBelow = false
@@ -56,6 +59,7 @@ struct ChatScreen: View {
                 ComposerView(
                     text: $draft,
                     size: $composerSize,
+                    images: $draftImages,
                     isGenerating: state.isGenerating,
                     availableHeight: geo.size.height,
                     onSend: { send(draft) },
@@ -73,6 +77,7 @@ struct ChatScreen: View {
                     .allowsHitTesting(false)
             }
         }
+        .onDisappear { speech.stop() }
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
         #endif
@@ -184,9 +189,18 @@ struct ChatScreen: View {
     }
 
     private func send(_ text: String) {
-        engine.send(text, in: chat, context: context)
+        speech.stop()
+        engine.send(text, images: draftImages.map(\.jpeg), in: chat, context: context)
         draft = ""
+        draftImages = []
         composerSize = .compact
+    }
+
+    private static func initialImages() -> [DraftImage] {
+        #if DEBUG
+        if CommandLine.arguments.contains("-uiTestSeedPhoto") { return [DraftImage(jpeg: DemoData.samplePhotoJPEG())] }
+        #endif
+        return []
     }
 
     private func scrollToBottom() {

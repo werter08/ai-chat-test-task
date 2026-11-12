@@ -30,7 +30,8 @@ How the result is built: [`ARCHITECTURE.md`](ARCHITECTURE.md). How it was verifi
 | 10 | Reply animation: sentence-by-sentence fade-in, read-from-top scrolling, "Go down" | done |
 | 11 | Verification: unit + UI tests, live API tests, screenshots | done |
 | 12 | README, docs, redacted AI logs | done (hours: fill in) |
-| — | Photo attachments | not done (optional) |
+| 13 | Photo attachments (picker, preview above the text box, vision model) | done — tests written, not run |
+| 14 | Dictation with Apple Speech (text appears in the box before sending) | done — tests written, not run |
 | — | Offline Apple Foundation Models mode | not done (optional) |
 
 ## What changed versus the original plan

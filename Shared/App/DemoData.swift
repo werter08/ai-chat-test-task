@@ -1,5 +1,7 @@
 #if DEBUG
+import ImageIO
 import SwiftData
+import UniformTypeIdentifiers
 
 /// Debug-only fixtures used by UI tests (launch args `-uiTestInMemory -uiTestSeedMarkdown`).
 /// Never compiled into Release builds; the in-memory store keeps real user data untouched.
@@ -71,4 +73,47 @@ struct DemoStreamingClient: ChatStreaming {
         }
     }
 }
+
+/// Simulated dictation for UI tests (`-uiTestFakeSpeech`): emits "Hello from speech input" word by word.
+@MainActor
+final class FakeSpeechService: SpeechService {
+    private var task: Task<Void, Never>?
+
+    func start(onText: @escaping @MainActor (String) -> Void, onEnd: @escaping @MainActor () -> Void) async throws {
+        let words = ["Hello", "from", "speech", "input"]
+        task = Task {
+            for index in words.indices {
+                try? await Task.sleep(for: .milliseconds(300))
+                if Task.isCancelled { return }
+                onText(words[...index].joined(separator: " "))
+            }
+        }
+    }
+
+    func stop() { task?.cancel() }
+}
+
+extension DemoData {
+    /// A small generated picture (gradient + circle) used by UI tests (`-uiTestSeedPhoto`).
+    static func samplePhotoJPEG() -> Data {
+        let width = 480, height = 320
+        let space = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let gradient = CGGradient(colorsSpace: space,
+                                        colors: [CGColor(red: 0.98, green: 0.45, blue: 0.35, alpha: 1),
+                                                 CGColor(red: 0.25, green: 0.45, blue: 0.95, alpha: 1)] as CFArray,
+                                        locations: [0, 1]) else { return Data() }
+        context.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: width, y: height), options: [])
+        context.setFillColor(CGColor(gray: 1, alpha: 0.9))
+        context.fillEllipse(in: CGRect(x: 300, y: 170, width: 90, height: 90))
+        guard let image = context.makeImage() else { return Data() }
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(output, UTType.jpeg.identifier as CFString, 1, nil) else { return Data() }
+        CGImageDestinationAddImage(destination, image, nil)
+        CGImageDestinationFinalize(destination)
+        return output as Data
+    }
+}
 #endif
+

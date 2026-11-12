@@ -195,6 +195,8 @@ struct SettingsView: View {
 
     • Send: the red button. While a reply is streaming it becomes Stop — tap it to stop; what has arrived is kept.
     • Error? Tap Retry on the banner.
+    • Photos: tap the photo button to attach up to 4 pictures. They appear above the text box and are sent with your message to a vision model.
+    • Dictation: tap the mic and speak; the words appear in the text box so you can edit them before sending.
     • New chat: the pencil icon. Past chats and search: the menu icon.
     • Your name and custom instructions (Settings) are added to every conversation.
     """
@@ -202,7 +204,9 @@ struct SettingsView: View {
     static let privacyText = """
     Your chats are stored only on this device.
 
-    To produce a reply, the recent messages of the current chat, your name and your custom instructions are sent to the AI provider (OpenRouter and the model's host). Do not share sensitive information.
+    To produce a reply, the recent messages of the current chat, your name and your custom instructions are sent to the AI provider (OpenRouter and the model's host). Photos you attach are sent too (downscaled).
+
+    Photos are stored on this device together with the chat. Dictation uses Apple's speech recognition: on the device when your language supports it, otherwise the audio is processed by Apple. Dictation needs microphone and speech-recognition permission. Do not share sensitive information.
 
     The app has no accounts and no analytics.
     """

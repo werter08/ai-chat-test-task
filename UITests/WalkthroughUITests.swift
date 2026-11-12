@@ -139,7 +139,7 @@ final class WalkthroughUITests: XCTestCase {
         shot("10_composer_third")
         // Expanded: the send button sits below the editor and spans the width (VStack layout).
         let send = app.buttons["Send message"]
-        XCTAssertGreaterThan(send.frame.width, app.frame.width * 0.7, "send button should be full width when expanded")
+        XCTAssertGreaterThan(send.frame.width, app.frame.width * 0.55, "send button should stretch across the row when expanded")
         XCTAssertGreaterThan(send.frame.minY, app.textViews.firstMatch.frame.maxY - 2, "send button should be below the editor")
 
         app.buttons["Expand input"].tap()

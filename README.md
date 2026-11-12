@@ -24,6 +24,8 @@ OpenRouter (`/api/v1/chat/completions`, `stream: true`), model `baidu/ernie-5.5-
 The key is XOR-ed with a random salt by `scripts/obfuscate_key.swift` and stored as byte arrays, so it is not a plain string in the source or binary. This is obfuscation, not security: anyone with the binary can recover the key. Use a free, limited key.
 
 ## What works
+- **Photos:** attach up to 4 pictures from the library (photo button). They preview in a strip above the text box and, once sent, appear above the message text. They are downscaled (1024 px, JPEG) and any request that contains a photo goes to the vision model `nvidia/nemotron-3.5-super-vl` (same key). Photos are stored with the chat.
+- **Dictation:** the mic button uses Apple's Speech framework; the transcript appears in the text box (after what you already typed) and is not sent until you press Send. On-device recognition is used where the language supports it.
 - Composer: glows while focused; a corner button cycles the editor size compact → 30% of the screen → full screen (send button moves below the editor, full width). Reopened chats open at their newest message.
 - Replies appear sentence by sentence: each sentence (list item, heading, block) fades in from 0 to 1, and the next one starts when the previous reaches 70%. The unfinished tail is held back until complete; if the network is far ahead the animation speeds up to catch up. The bubble's height is animated (no line-by-line jumps) and the Copy button appears below the message once it is finished. The view does not follow the text: when you send, your message scrolls to the top and the reply grows beneath it, so you read from the top; when the reply is ready, a floating **Go down** bubble jumps to the end.
 - Streaming replies as they are generated; **Stop** keeps the partial reply and adds a "You stopped the response." note (with Retry) — it is not treated as an error.
@@ -37,7 +39,8 @@ The key is XOR-ed with a random salt by `scripts/obfuscate_key.swift` and stored
 - Dependencies: none (Swift Package Manager only, no packages needed).
 
 ## Not done / known issues
-- Photo attachments and offline Apple Foundation Models mode (optional items) — not implemented.
+- Offline Apple Foundation Models mode (optional item) — not implemented.
+- Photos and dictation were added last, under time pressure: their unit/UI tests are written (`Tests/PhotoSpeechTests.swift`, UI tests for dictation and photos are described in `docs/TESTING.md`) but were **not run**; the project compiles (incl. test targets). I checked the vision model with a direct API request and the composer in a simulator screenshot. Real speech recognition was not exercised (no spoken audio in the simulator); a tap on the photo picker was not automated. Full-screen photo viewing is not implemented.
 - Onboarding uses SF Symbols instead of the robot illustrations from the design kit (no exported assets); Urbanist font not bundled (system font used).
 - Login/sign-up/OTP, the Pro banner, Notifications, Security and Logout from the design kit are intentionally skipped (no accounts or backend in the task).
 - Only an iOS 26.5 simulator was available for testing; iOS 18 is covered by API choice, not by a run on an iOS 18 runtime.

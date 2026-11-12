@@ -26,4 +26,23 @@ final class LiveAPITests: XCTestCase {
             XCTAssertEqual(error as? ChatAPIError, .unauthorized)
         }
     }
+
+    func testVisionModelDescribesAPhoto() async throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["RUN_LIVE_TESTS"] == "1", "set RUN_LIVE_TESTS=1 to run")
+        try XCTSkipIf(KeyVault.apiKey() == nil, "no embedded key")
+        let jpeg = try XCTUnwrap(ImageProcessing.downscaledJPEG(from: DemoData.samplePhotoJPEG()))
+        let message = APIMessage(
+            role: "user",
+            content: "Name the dominant colors in this picture in one short sentence.",
+            imageURLs: ["data:image/jpeg;base64," + jpeg.base64EncodedString()]
+        )
+        var reply = ""
+        do {
+            for try await delta in OpenRouterClient().stream(messages: [message]) { reply += delta }
+        } catch ChatAPIError.rateLimited {
+            throw XCTSkip("free model is rate limited right now")
+        }
+        XCTAssertFalse(reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
 }
+

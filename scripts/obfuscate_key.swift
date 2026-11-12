@@ -40,6 +40,8 @@ let env = parseEnv(envText)
 let key = env["OPENROUTER_API_KEY"] ?? ""
 let model = (env["OPENROUTER_MODEL"] ?? "").isEmpty ? "baidu/ernie-5.5-flash-preview:free" : env["OPENROUTER_MODEL"]!
 
+let visionModel = (env["OPENROUTER_VISION_MODEL"] ?? "").isEmpty ? "nvidia/nemotron-3.5-super-vl" : env["OPENROUTER_VISION_MODEL"]!
+
 let isPlaceholder = key.isEmpty || key.contains("<") || key.uppercased().contains("API_KEY") || key.uppercased().contains("PASTE")
 if isPlaceholder {
     print("obfuscate_key: no real OPENROUTER_API_KEY in .env — keeping existing Secrets.generated.swift")
@@ -72,6 +74,9 @@ enum Secrets {
     ]
 
     static let model = "\(model)"
+
+    /// Used for requests that contain a photo.
+    static let visionModel = "\(visionModel)"
 }
 
 """

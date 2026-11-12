@@ -3,6 +3,29 @@ import Foundation
 struct APIMessage: Encodable, Equatable {
     let role: String
     let content: String
+    /// `data:image/jpeg;base64,…` URLs. When present the message is encoded in the multi-part (vision) format.
+    var imageURLs: [String] = []
+
+    private enum CodingKeys: String, CodingKey { case role, content }
+
+    private struct Part: Encodable {
+        struct ImageURL: Encodable { let url: String }
+        let type: String
+        var text: String?
+        var image_url: ImageURL?
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(role, forKey: .role)
+        if imageURLs.isEmpty {
+            try container.encode(content, forKey: .content)
+        } else {
+            var parts = [Part(type: "text", text: content)]
+            parts += imageURLs.map { Part(type: "image_url", image_url: .init(url: $0)) }
+            try container.encode(parts, forKey: .content)
+        }
+    }
 }
 
 /// Abstraction over the AI backend so the engine can be tested with a mock.
@@ -16,6 +39,8 @@ struct OpenRouterClient: ChatStreaming {
 
     var session: URLSession = .shared
     var model: String = Secrets.model
+    /// Used instead of `model` whenever a request contains a photo.
+    var visionModel: String = Secrets.visionModel
     var keyProvider: @Sendable () -> String? = { KeyVault.apiKey() }
 
     private struct RequestBody: Encodable {
@@ -27,6 +52,11 @@ struct OpenRouterClient: ChatStreaming {
     private struct ErrorBody: Decodable {
         struct Detail: Decodable { let message: String? }
         let error: Detail?
+    }
+
+    /// The vision model handles any request that carries a photo; everything else uses the text model.
+    nonisolated static func chooseModel(for messages: [APIMessage], text: String, vision: String) -> String {
+        messages.contains { !$0.imageURLs.isEmpty } ? vision : text
     }
 
     func stream(messages: [APIMessage]) -> AsyncThrowingStream<String, Error> {
@@ -43,7 +73,11 @@ struct OpenRouterClient: ChatStreaming {
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
                     request.setValue("AI Chat", forHTTPHeaderField: "X-Title")
                     request.httpBody = try JSONEncoder().encode(
-                        RequestBody(model: model, messages: messages, stream: true)
+                        RequestBody(
+                            model: Self.chooseModel(for: messages, text: model, vision: visionModel),
+                            messages: messages,
+                            stream: true
+                        )
                     )
 
                     let (bytes, response) = try await session.bytes(for: request)

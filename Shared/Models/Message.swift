@@ -15,6 +15,8 @@ final class Message {
     var content: String
     var createdAt: Date
     var chat: Chat?
+    @Relationship(deleteRule: .cascade, inverse: \Attachment.message)
+    var attachments: [Attachment] = []
 
     init(role: MessageRole, content: String, createdAt: Date = .now) {
         self.id = UUID()
@@ -27,4 +29,9 @@ final class Message {
         get { MessageRole(rawValue: roleRaw) ?? .assistant }
         set { roleRaw = newValue.rawValue }
     }
+
+    var sortedAttachments: [Attachment] {
+        attachments.sorted { $0.createdAt < $1.createdAt }
+    }
 }
+

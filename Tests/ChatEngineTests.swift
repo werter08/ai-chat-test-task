@@ -32,7 +32,7 @@ private struct MockClient: ChatStreaming {
 final class ChatEngineTests: XCTestCase {
     private func makeContext() throws -> ModelContext {
         let container = try ModelContainer(
-            for: Chat.self, Message.self,
+            for: Chat.self, Message.self, Attachment.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         return ModelContext(container)

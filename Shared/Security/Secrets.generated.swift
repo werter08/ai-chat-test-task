@@ -8,5 +8,8 @@ enum Secrets {
         0x5A, 0xC3, 0x19, 0x7E, 0xA2, 0x44, 0xF1, 0x08,
     ]
 
-    static let model = "baidu/ernie-5.5-flash-preview"
+    static let model = "baidu/ernie-5.5-flash-preview:free"
+
+    /// Used for requests that contain a photo.
+    static let visionModel = "nvidia/nemotron-3.5-super-vl"
 }
