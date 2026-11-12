@@ -37,6 +37,7 @@ Compiled only in Debug builds (`#if DEBUG`): launch arguments `-uiTestInMemory` 
 | Reopened chat was blank until dragged (lazy stack + scroll race) | UI test |
 | Drawer opened once then never again (closing drag removed its own gesture host) | UI regression test |
 | Appearance tiles tappable only on icon/text | UI test taps the tile edge |
+| Drawer leapt when the swipe locked / snapped on release | `DrawerMathTests` (origin at lock, 1:1 follow, projection-based settle) |
 | Reply end hidden under the composer / snapping layout | screenshots, then assertions |
 | Go down scrolled only part-way | UI test → `ScrollPosition` API |
 
