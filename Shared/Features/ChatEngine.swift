@@ -19,9 +19,11 @@ final class ChatEngine {
     private(set) var states: [UUID: State] = [:]
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private let client: ChatStreaming
+    @ObservationIgnored private let profile: () -> UserProfile
 
-    init(client: ChatStreaming) {
+    init(client: ChatStreaming, profile: @escaping () -> UserProfile = { .current }) {
         self.client = client
+        self.profile = profile
     }
 
     func state(for chat: Chat) -> State {
@@ -74,7 +76,7 @@ final class ChatEngine {
 
     private func generate(in chat: Chat, context: ModelContext) {
         let chatID = chat.id
-        let history = Self.buildRequest(from: chat.sortedMessages)
+        let history = Self.buildRequest(from: chat.sortedMessages, mode: chat.mode, profile: profile())
         states[chatID] = State(isGenerating: true, error: nil)
 
         tasks[chatID] = Task { [weak self, client] in
@@ -111,12 +113,24 @@ final class ChatEngine {
 
     // MARK: Helpers
 
-    static func buildRequest(from messages: [Message]) -> [APIMessage] {
+    nonisolated static func buildRequest(from messages: [Message], mode: ChatMode? = nil, profile: UserProfile = UserProfile()) -> [APIMessage] {
         let recent = messages.suffix(maxContextMessages).map { APIMessage(role: $0.roleRaw, content: $0.content) }
-        return [APIMessage(role: "system", content: systemPrompt)] + recent
+        return [APIMessage(role: "system", content: makeSystemPrompt(mode: mode, profile: profile))] + recent
     }
 
-    static func makeTitle(from text: String) -> String {
+    nonisolated static func makeSystemPrompt(mode: ChatMode?, profile: UserProfile) -> String {
+        var parts = [systemPrompt]
+        if let mode { parts.append(mode.systemPrompt) }
+        let name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !name.isEmpty { parts.append("The user's name is \(name.prefix(40)).") }
+        let instructions = profile.instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !instructions.isEmpty {
+            parts.append("Custom instructions from the user: \(instructions.prefix(UserProfile.maxInstructionsLength))")
+        }
+        return parts.joined(separator: "\n")
+    }
+
+    nonisolated static func makeTitle(from text: String) -> String {
         let firstLine = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? text
         return firstLine.count > 40 ? String(firstLine.prefix(40)) + "…" : firstLine
     }

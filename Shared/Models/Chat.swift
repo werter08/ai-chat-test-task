@@ -9,6 +9,8 @@ final class Chat {
     var title: String
     var createdAt: Date
     var updatedAt: Date
+    /// Raw `ChatMode`; nil = general chat.
+    var modeRaw: String?
     @Relationship(deleteRule: .cascade, inverse: \Message.chat)
     var messages: [Message] = []
 
@@ -17,6 +19,11 @@ final class Chat {
         self.title = title
         self.createdAt = .now
         self.updatedAt = .now
+    }
+
+    var mode: ChatMode? {
+        get { modeRaw.flatMap(ChatMode.init(rawValue:)) }
+        set { modeRaw = newValue?.rawValue }
     }
 
     var sortedMessages: [Message] {
