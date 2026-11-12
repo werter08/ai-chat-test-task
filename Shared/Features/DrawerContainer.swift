@@ -5,16 +5,21 @@ import UIKit
 #endif
 
 /// Push-style side drawer: the content slides aside while the drawer parallax-slides in beneath it.
-/// Interactive — follows the finger, settles with a spring using the drag velocity, and can be opened by an
-/// edge swipe (when `edgeSwipeEnabled`) and closed by tapping or dragging the dimmed content.
+/// Interactive — follows the finger, settles with a spring using the drag velocity. A rightward swipe from
+/// anywhere opens it (when `swipeEnabled`); tapping or dragging the dimmed content closes it.
 /// The dim layer deliberately ignores the safe areas so it covers the whole screen.
+///
+/// Robustness notes (these fixed "opens once, then never again"):
+/// - the drag offset is a `@GestureState`, so it always resets — even if the system cancels the gesture;
+/// - the dim layer is never removed from the hierarchy mid-drag (that cancelled the closing gesture and left
+///   `isOpen` stuck), it only stops hit-testing when closed.
 struct DrawerContainer<Drawer: View, Content: View>: View {
     @Binding var isOpen: Bool
-    var edgeSwipeEnabled = true
+    var swipeEnabled = true
     @ViewBuilder var drawer: () -> Drawer
     @ViewBuilder var content: () -> Content
 
-    @State private var drag: CGFloat = 0
+    @GestureState private var drag: CGFloat = 0
 
     private static var spring: Animation { .spring(response: 0.38, dampingFraction: 0.86) }
 
@@ -32,53 +37,51 @@ struct DrawerContainer<Drawer: View, Content: View>: View {
                     .offset(x: -(1 - progress) * width * 0.3)
                     .allowsHitTesting(progress > 0.01)
                     .accessibilityHidden(progress < 0.01)
-                    .simultaneousGesture(dragGesture(width: width))
+                    .simultaneousGesture(dragGesture(width: width), including: progress > 0.01 ? .all : .subviews)
 
                 content()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background { Rectangle().fill(.background).ignoresSafeArea() }
                     .shadow(color: .black.opacity(0.28 * progress), radius: 16, x: -3)
                     .offset(x: offset)
+                    .simultaneousGesture(
+                        dragGesture(width: width),
+                        including: (!isOpen && swipeEnabled) ? .all : .subviews
+                    )
 
-                if progress > 0.001 {
-                    Color.black.opacity(0.22 * progress)
-                        .ignoresSafeArea()
-                        .contentShape(Rectangle())
-                        .offset(x: offset)
-                        .onTapGesture { setOpen(false) }
-                        .gesture(dragGesture(width: width))
-                        .accessibilityLabel("Close menu")
-                        .accessibilityAddTraits(.isButton)
-                }
-
-                if !isOpen && edgeSwipeEnabled {
-                    Color.clear
-                        .frame(width: 22)
-                        .frame(maxHeight: .infinity)
-                        .contentShape(Rectangle())
-                        .gesture(dragGesture(width: width))
-                }
+                // Always in the hierarchy (never torn down while a drag is in flight); inert when closed.
+                Color.black.opacity(0.22 * progress)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .offset(x: offset)
+                    .onTapGesture { setOpen(false) }
+                    .gesture(dragGesture(width: width))
+                    .allowsHitTesting(progress > 0.001)
+                    .accessibilityHidden(progress < 0.001)
+                    .accessibilityLabel("Close menu")
+                    .accessibilityAddTraits(.isButton)
             }
         }
         .onChange(of: isOpen) { _, open in if open { Self.dismissKeyboard() } }
     }
 
     private func dragGesture(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 8)
-            .onChanged { value in
-                // Ignore mostly-vertical drags (list/scroll gestures).
-                guard drag != 0 || abs(value.translation.width) > abs(value.translation.height) else { return }
-                drag = value.translation.width
+        DragGesture(minimumDistance: 12)
+            .updating($drag) { value, state, _ in
+                // Only mostly-horizontal drags move the drawer (vertical ones belong to scroll views).
+                guard isHorizontal(value.translation) else { return }
+                state = value.translation.width
             }
             .onEnded { value in
+                guard isHorizontal(value.translation) else { return }
                 let base: CGFloat = isOpen ? width : 0
                 let projected = base + value.predictedEndTranslation.width
-                let shouldOpen = abs(drag) > 0 ? projected > width / 2 : isOpen
-                withAnimation(Self.spring) {
-                    isOpen = shouldOpen
-                    drag = 0
-                }
+                withAnimation(Self.spring) { isOpen = projected > width / 2 }
             }
+    }
+
+    private func isHorizontal(_ translation: CGSize) -> Bool {
+        abs(translation.width) > abs(translation.height) * 1.5
     }
 
     private func setOpen(_ open: Bool) {

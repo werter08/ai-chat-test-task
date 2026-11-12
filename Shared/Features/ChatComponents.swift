@@ -1,13 +1,5 @@
 import SwiftUI
 
-/// Speed of the typewriter reveal: proportional to the backlog (so it never lags far behind the network)
-/// but never slower than one character per tick (so it always looks like typing).
-enum TypewriterPacing {
-    nonisolated static func step(backlog: Int) -> Int {
-        max(1, Int((Double(backlog) / 12).rounded(.up)))
-    }
-}
-
 private struct RevealKey: Hashable {
     let count: Int
     let streaming: Bool
@@ -33,20 +25,18 @@ struct MessageBubble: View {
     let onReveal: () -> Void
     @Environment(Toast.self) private var toast
     @State private var copied = false
-    /// Characters of the reply shown so far while it is typed out; nil = show everything.
-    @State private var revealed: Int?
+    /// True while the reply is being revealed sentence by sentence (only for replies streamed right now).
+    @State private var isStaging: Bool
+    /// When each unit (sentence / list item / block) became available, as seconds since the reference date.
+    @State private var eligible: [Double] = []
+    @State private var now = Date.timeIntervalSinceReferenceDate
 
     init(message: Message, isStreaming: Bool = false, onReveal: @escaping () -> Void = {}) {
         self.message = message
         self.isStreaming = isStreaming
         self.onReveal = onReveal
-        // Only a reply that is being streamed right now is typed out; stored history appears instantly.
-        _revealed = State(initialValue: isStreaming ? 0 : nil)
-    }
-
-    private var displayedText: String {
-        guard let revealed else { return message.content }
-        return StreamingMarkdown.closeOpenMarkers(String(message.content.prefix(revealed)))
+        // Stored history appears instantly; only a reply that is streaming right now is revealed gradually.
+        _isStaging = State(initialValue: isStreaming)
     }
 
     private var isUser: Bool { message.role == .user }
@@ -67,41 +57,82 @@ struct MessageBubble: View {
         HStack(alignment: .top, spacing: Theme.spacing2) {
             if isUser { Spacer(minLength: 48) }
             bubble
+                .contextMenu {
+                    Button(action: copyMessage) { Label("Copy", systemImage: "doc.on.doc") }
+                    ShareLink(item: message.content) { Label("Share", systemImage: "square.and.arrow.up") }
+                }
             if !isUser {
-                VStack(spacing: 10) {
-                    Button(action: copyMessage) {
-                        Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")
-                            .foregroundStyle(copied ? Color.green : .secondary)
-                            .contentTransition(.symbolEffect(.replace))
-                    }
-                    .accessibilityLabel(copied ? "Copied" : "Copy")
-                    ShareLink(item: message.content) {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    .accessibilityLabel("Share")
+                Button(action: copyMessage) {
+                    Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")
+                        .foregroundStyle(copied ? Color.green : .secondary)
+                        .contentTransition(.symbolEffect(.replace))
                 }
                 .font(.system(size: 14))
-                .foregroundStyle(.secondary)
                 .buttonStyle(.plain)
                 .padding(.top, 6)
+                .accessibilityLabel(copied ? "Copied" : "Copy")
                 .sensoryFeedback(.success, trigger: copied) { _, new in new }
             }
         }
     }
 
-    /// Catches the displayed text up to the received text, a few characters per frame.
-    private func reveal() async {
-        guard var shown = revealed else { return }
-        let total = message.content.count
-        while shown < total, !Task.isCancelled {
-            shown = min(total, shown + TypewriterPacing.step(backlog: total - shown))
-            revealed = shown
-            onReveal()
-            try? await Task.sleep(for: .milliseconds(16))
+    @ViewBuilder
+    private var bubble: some View {
+        if isUser {
+            Text(InlineMarkdown.attributed(message.content))
+                .font(.system(size: 16))
+                .lineSpacing(3)
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.accentColor, in: shape)
+                .frame(maxWidth: 560, alignment: .trailing)
+                .accessibilityLabel("You: \(message.content)")
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                if isStaging {
+                    StagedMarkdownView(
+                        content: StagedText.prepare(message.content, finished: !isStreaming),
+                        alphas: StagedText.alphas(eligible: eligible, at: now)
+                    )
+                    TypingCursor()
+                } else {
+                    MarkdownView(text: message.content)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Theme.fill, in: shape)
+            .frame(maxWidth: 680, alignment: .leading)
+            .task(id: RevealKey(count: message.content.count, streaming: isStreaming)) { await drive() }
         }
-        if shown >= total, !isStreaming, !Task.isCancelled {
-            revealed = nil   // finished: render the full text normally
-            onReveal()
+    }
+
+    /// Drives the sentence-by-sentence fade: registers newly available units and ticks the clock until
+    /// everything is fully visible; when the reply is finished the bubble switches to normal rendering.
+    private func drive() async {
+        guard isStaging else { return }
+        let content = StagedText.prepare(message.content, finished: !isStreaming)
+        let arrival = Date.timeIntervalSinceReferenceDate
+        while eligible.count < content.unitCount { eligible.append(arrival) }
+
+        var lastStarted = -1
+        while !Task.isCancelled {
+            now = Date.timeIntervalSinceReferenceDate
+            let alphas = StagedText.alphas(eligible: eligible, at: now)
+            let started = alphas.filter { $0 > 0 }.count
+            if started != lastStarted {
+                lastStarted = started
+                onReveal()
+            }
+            if alphas.allSatisfy({ $0 >= 1 }) {
+                if !isStreaming {
+                    isStaging = false   // finished: render the full text normally
+                    onReveal()
+                }
+                return   // otherwise idle until more text arrives (the task restarts with it)
+            }
+            try? await Task.sleep(for: .milliseconds(33))
         }
     }
 
@@ -112,32 +143,6 @@ struct MessageBubble: View {
         Task {
             try? await Task.sleep(for: .seconds(1.5))
             withAnimation(.snappy) { copied = false }
-        }
-    }
-
-    @ViewBuilder
-    private var bubble: some View {
-        if isUser {
-            Text(InlineMarkdown.attributed(message.content))
-                .font(.system(size: 16))
-                .lineSpacing(3)
-                .textSelection(.enabled)
-                .foregroundStyle(Color.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Color.accentColor, in: shape)
-                .frame(maxWidth: 560, alignment: .trailing)
-                .accessibilityLabel("You: \(message.content)")
-        } else {
-            VStack(alignment: .leading, spacing: 6) {
-                MarkdownView(text: displayedText)
-                if revealed != nil { TypingCursor() }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(Theme.fill, in: shape)
-            .frame(maxWidth: 680, alignment: .leading)
-            .task(id: RevealKey(count: message.content.count, streaming: isStreaming)) { await reveal() }
         }
     }
 }

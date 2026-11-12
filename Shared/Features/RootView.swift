@@ -22,7 +22,7 @@ struct RootView: View {
     var body: some View {
         Group {
             if didSeeOnboarding {
-                DrawerContainer(isOpen: $showSidebar, edgeSwipeEnabled: path.isEmpty) {
+                DrawerContainer(isOpen: $showSidebar, swipeEnabled: path.isEmpty) {
                     SidebarView(
                         currentID: currentID,
                         onSelect: { chat in

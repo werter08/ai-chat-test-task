@@ -199,4 +199,71 @@ final class WalkthroughUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["No reply received"].exists)
         shot("14_stopped")
     }
+
+    /// Regression: the drawer opened once by swipe, was closed, and then never opened again.
+    func testSwipeOpensDrawerRepeatedlyAndAfterEveryWayOfClosing() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-didSeeOnboarding", "YES", "-uiTestInMemory"]
+        app.launch()
+        XCTAssertTrue(app.textFields["Ask me anything…"].waitForExistence(timeout: 10))
+
+        func swipe(from: Double, to: Double) {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: from, dy: 0.45))
+            let end = app.coordinate(withNormalizedOffset: CGVector(dx: to, dy: 0.45))
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
+        func assertOpen(_ message: String) {
+            XCTAssertTrue(app.buttons["sidebar.settings"].waitForExistence(timeout: 3), message)
+            sleep(1)
+            XCTAssertTrue(app.buttons["sidebar.settings"].isHittable, message)
+        }
+        func assertClosed(_ message: String) {
+            sleep(1)
+            // A closed drawer sits behind the content: it may still exist, but must not be tappable.
+            XCTAssertFalse(app.buttons["sidebar.settings"].isHittable, message)
+            XCTAssertTrue(app.textFields["Ask me anything…"].isHittable, message)
+        }
+
+        // 1) swipe open (from the middle of the screen, not only the edge) -> close by tapping the dimmed zone
+        swipe(from: 0.35, to: 0.9)
+        assertOpen("swipe right from the middle should open the drawer")
+        shot("15_swipe_opened")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        assertClosed("tap on the free zone should close")
+
+        // 2) swipe open again -> close by dragging it fully shut (this used to leave the state stuck)
+        swipe(from: 0.1, to: 0.85)
+        assertOpen("drawer must open again after a tap-close")
+        swipe(from: 0.6, to: 0.02)
+        assertClosed("dragging it shut should close")
+
+        // 3) after a drag-close it must still open — by swipe, then by the menu button
+        swipe(from: 0.1, to: 0.85)
+        assertOpen("drawer must open by swipe after a drag-close")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        assertClosed("closed again")
+        app.buttons["Menu"].tap()
+        assertOpen("menu button must still open it")
+    }
+
+    /// Share is not a permanent button any more: it lives in the long-press menu next to Copy.
+    func testShareOnlyOnLongPress() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-didSeeOnboarding", "YES", "-uiTestInMemory", "-uiTestSeedMarkdown"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Chatterly"].waitForExistence(timeout: 10))
+        app.buttons["Menu"].tap()
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Demo: async/await'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        XCTAssertTrue(app.staticTexts["The core idea"].waitForExistence(timeout: 5))
+
+        XCTAssertFalse(app.buttons["Share"].exists, "no always-visible share button")
+
+        app.staticTexts["The core idea"].press(forDuration: 1.0)
+        XCTAssertTrue(app.buttons["Share"].waitForExistence(timeout: 3), "long press should reveal Share")
+        XCTAssertTrue(app.buttons["Copy"].exists)
+        shot("16_long_press_menu")
+    }
 }
+

@@ -45,23 +45,3 @@ final class ChatModeTests: XCTestCase {
         }
     }
 }
-
-final class TypewriterPacingTests: XCTestCase {
-    func testNeverSlowerThanOneCharacterPerTick() {
-        XCTAssertEqual(TypewriterPacing.step(backlog: 0), 1)
-        XCTAssertEqual(TypewriterPacing.step(backlog: 1), 1)
-        XCTAssertEqual(TypewriterPacing.step(backlog: 12), 1)
-    }
-
-    func testSpeedsUpWithBacklogAndIsMonotonic() {
-        XCTAssertEqual(TypewriterPacing.step(backlog: 13), 2)
-        XCTAssertEqual(TypewriterPacing.step(backlog: 120), 10)
-        var previous = 0
-        for backlog in stride(from: 0, through: 2000, by: 7) {
-            let step = TypewriterPacing.step(backlog: backlog)
-            XCTAssertGreaterThanOrEqual(step, previous)
-            previous = step
-        }
-    }
-}
-

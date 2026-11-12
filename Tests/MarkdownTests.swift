@@ -60,24 +60,113 @@ final class MarkdownParserTests: XCTestCase {
     }
 }
 
-final class StreamingMarkdownTests: XCTestCase {
-    func testClosesOpenItalicBoldAndInlineCode() {
-        XCTAssertEqual(StreamingMarkdown.closeOpenMarkers("a *suspendi"), "a *suspendi*")
-        XCTAssertEqual(StreamingMarkdown.closeOpenMarkers("a **bol"), "a **bol**")
-        XCTAssertEqual(StreamingMarkdown.closeOpenMarkers("use `aw"), "use `aw`")
-        XCTAssertEqual(StreamingMarkdown.closeOpenMarkers("**a** and *b"), "**a** and *b*")
+final class SentenceSplitterTests: XCTestCase {
+    func testSplitsOnTerminatorsAndKeepsWhitespace() {
+        let parts = SentenceSplitter.split("Hello world. How are you? Fine!")
+        XCTAssertEqual(parts, ["Hello world. ", "How are you? ", "Fine!"])
+        XCTAssertEqual(parts.joined(), "Hello world. How are you? Fine!")
     }
 
-    func testBalancedTextIsUnchanged() {
-        for text in ["plain", "*i* **b** `c`", "## Title\n\nbody"] {
-            XCTAssertEqual(StreamingMarkdown.closeOpenMarkers(text), text)
-        }
+    func testDoesNotSplitDecimalsOrUnbalancedMarkup() {
+        XCTAssertEqual(SentenceSplitter.split("Pi is 3.14 roughly. Next").count, 2)
+        XCTAssertEqual(SentenceSplitter.split("**Note. Both parts** stay together. Then more").count, 2)
+        XCTAssertEqual(SentenceSplitter.split("Call `a.b()` now. Done.").count, 2)
     }
 
-    func testListBulletsAndCodeFencesAreNotTreatedAsEmphasis() {
-        XCTAssertEqual(StreamingMarkdown.closeOpenMarkers("* one\n* two"), "* one\n* two")
-        XCTAssertEqual(StreamingMarkdown.closeOpenMarkers("```swift\nlet a = 2 * 3"), "```swift\nlet a = 2 * 3")
-        XCTAssertEqual(StreamingMarkdown.closeOpenMarkers("```\nx * y\n```\ndone *it"), "```\nx * y\n```\ndone *it*")
+    func testKeepsNewlinesAndClosingMarkers() {
+        XCTAssertEqual(SentenceSplitter.split("**Done.** Next\nLine two."), ["**Done.** ", "Next\nLine two."])
     }
+
+    func testCompleteness() {
+        XCTAssertTrue(SentenceSplitter.isComplete("Done. "))
+        XCTAssertTrue(SentenceSplitter.isComplete("Done."))
+        XCTAssertTrue(SentenceSplitter.isComplete("Key points:"))
+        XCTAssertTrue(SentenceSplitter.isComplete("\"Quoted.\""))
+        XCTAssertFalse(SentenceSplitter.isComplete("Half writ"))
+    }
+}
+
+final class StagedRevealTests: XCTestCase {
+    func testStreamingHoldsBackUnfinishedSentenceUntilFinished() {
+        XCTAssertEqual(StagedText.prepare("One. Two", finished: false).blocks, [.paragraph(sentences: ["One. "])])
+        XCTAssertEqual(StagedText.prepare("One. Two", finished: true).blocks, [.paragraph(sentences: ["One. ", "Two"])])
+        XCTAssertEqual(StagedText.prepare("Half writ", finished: false).unitCount, 0)
+    }
+
+    func testHeadingWaitsForItsNewlineWhileStreaming() {
+        XCTAssertEqual(StagedText.prepare("## Title", finished: false).unitCount, 0)
+        XCTAssertEqual(StagedText.prepare("## Title\n", finished: false).unitCount, 1)
+        XCTAssertEqual(StagedText.prepare("## Title", finished: true).unitCount, 1)
+    }
+
+    func testListItemsAreUnitsAndLastOneIsHeldBack() {
+        let streaming = StagedText.prepare("- a\n- b\n- c", finished: false)
+        XCTAssertEqual(streaming.unitCount, 2)
+        XCTAssertEqual(StagedText.prepare("- a\n- b\n- c\n", finished: false).unitCount, 3)
+    }
+
+    func testCodeBlocksAreAlwaysShownEvenWhenOpen() {
+        let content = StagedText.prepare("Intro.\n\n```swift\nlet a = 1", finished: false)
+        XCTAssertEqual(content.unitCount, 2)
+    }
+
+    func testUnitCountMatchesFullReply() {
+        let content = StagedText.prepare(DemoDataProbe.sample, finished: true)
+        XCTAssertGreaterThan(content.unitCount, 8)
+    }
+
+    // MARK: Timing
+
+    func testFirstUnitFadesInOverHalfASecond() {
+        let a = StagedText.alphas(eligible: [100], at: 100.25)
+        XCTAssertEqual(a[0], 0.5, accuracy: 0.001)
+        XCTAssertEqual(StagedText.alphas(eligible: [100], at: 101)[0], 1)
+        XCTAssertEqual(StagedText.alphas(eligible: [100], at: 99)[0], 0)
+    }
+
+    func testNextUnitStartsWhenPreviousReachesSeventyPercent() {
+        // Both available at t=100: unit 0 starts at 100, unit 1 at 100 + 0.5 * 0.7 = 100.35.
+        let before = StagedText.alphas(eligible: [100, 100], at: 100.34)
+        XCTAssertEqual(before[1], 0, accuracy: 0.001)
+        XCTAssertEqual(before[0], 0.68, accuracy: 0.001)
+        let after = StagedText.alphas(eligible: [100, 100], at: 100.60)
+        XCTAssertEqual(after[1], 0.5, accuracy: 0.001)
+    }
+
+    func testAnimationCatchesUpWhenFarBehindTheNetwork() {
+        // 20 units all available at t=100 would take 20 * 0.35 = 7 s; the gap shrinks once units wait > 2 s.
+        let eligible = [Double](repeating: 100, count: 20)
+        let alphas = StagedText.alphas(eligible: eligible, at: 104)
+        XCTAssertGreaterThan(alphas.filter { $0 > 0 }.count, 12)
+    }
+
+    func testLaterArrivalsAreNotStartedEarly() {
+        let a = StagedText.alphas(eligible: [100, 105], at: 103)
+        XCTAssertEqual(a[0], 1)
+        XCTAssertEqual(a[1], 0)
+    }
+}
+
+private enum DemoDataProbe {
+    static let sample = """
+    ## The core idea
+
+    `async` marks a function as suspending. `await` marks a suspension point. Execution may pause there.
+
+    ```swift
+    let a = 1
+    ```
+
+    Key points:
+
+    - First point
+    - Second point
+    1. Step one
+    2. Step two
+
+    > A quote.
+
+    Final sentence here. And one more.
+    """
 }
 

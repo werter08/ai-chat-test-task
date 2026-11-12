@@ -153,43 +153,12 @@ enum MarkdownParser {
     }
 }
 
-// MARK: - Streaming helper
-
-/// While a reply is typed out, the revealed text can end inside `*italic`, `**bold` or `inline code`.
-/// Closing the open marker (for display only) avoids flashing raw `*` / backticks until the real closer arrives.
-enum StreamingMarkdown {
-    nonisolated static func closeOpenMarkers(_ text: String) -> String {
-        var inFence = false
-        var prose: [String] = []
-        for line in text.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") { inFence.toggle(); continue }
-            if inFence { continue }
-            // A leading "* " / "- " / "+ " is a list bullet, not emphasis.
-            var l = trimmed
-            if let first = l.first, "*-+".contains(first), l.dropFirst().first == " " { l = String(l.dropFirst(2)) }
-            prose.append(l)
-        }
-        if inFence { return text }   // still inside a code block: nothing to close
-
-        let joined = prose.joined(separator: "\n")
-        let backticks = joined.filter { $0 == "`" }.count
-        if backticks % 2 == 1 { return text + "`" }
-
-        let doubles = joined.components(separatedBy: "**").count - 1
-        let singles = joined.replacingOccurrences(of: "**", with: "").filter { $0 == "*" }.count
-        var result = text
-        if doubles % 2 == 1 { result += "**" }
-        if singles % 2 == 1 { result += "*" }
-        return result
-    }
-}
-
 // MARK: - Inline styling
 
 enum InlineMarkdown {
     /// Bold / italic / links via Foundation's Markdown parser; inline `code` gets a monospaced chip look.
-    static func attributed(_ text: String, size: CGFloat = 16) -> AttributedString {
+    /// `alpha` < 1 fades the whole text (used by the staged reveal).
+    static func attributed(_ text: String, size: CGFloat = 16, alpha: Double = 1) -> AttributedString {
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         var result = (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
         let codeRuns = result.runs.compactMap { run in
@@ -197,8 +166,9 @@ enum InlineMarkdown {
         }
         for range in codeRuns {
             result[range].font = .system(size: size - 1.5, design: .monospaced)
-            result[range].backgroundColor = Color.primary.opacity(0.12)
+            result[range].backgroundColor = Color.primary.opacity(0.12 * alpha)
         }
+        if alpha < 1 { result.foregroundColor = Color.primary.opacity(alpha) }
         return result
     }
 }
@@ -281,37 +251,20 @@ private struct BlockView: View {
             Text(InlineMarkdown.attributed(text, size: headingSize(level)))
                 .font(.system(size: headingSize(level), weight: level <= 2 ? .bold : .semibold, design: .rounded))
                 .padding(.top, level <= 2 ? 4 : 0)
-                .textSelection(.enabled)
         case .paragraph(let text):
             Text(InlineMarkdown.attributed(text))
                 .font(.system(size: 16))
                 .lineSpacing(3)
-                .textSelection(.enabled)
         case .code(let language, let code):
             CodeBlockView(language: language, code: code)
         case .list(let items):
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(item.marker)
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(Color.accentColor)
-                            .frame(minWidth: 18, alignment: .trailing)
-                        Text(InlineMarkdown.attributed(item.text))
-                            .font(.system(size: 16))
-                            .lineSpacing(3)
-                            .textSelection(.enabled)
-                    }
-                    .padding(.leading, CGFloat(item.indent) * 16)
-                }
-            }
+            ListBlockView(items: items, alphas: nil)
         case .quote(let text):
             HStack(spacing: 10) {
                 RoundedRectangle(cornerRadius: 2).fill(Color.accentColor.opacity(0.7)).frame(width: 3)
                 Text(InlineMarkdown.attributed(text))
                     .font(.system(size: 15).italic())
                     .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
             }
             .fixedSize(horizontal: false, vertical: true)
         case .table(let rows):
@@ -424,3 +377,77 @@ private struct TableBlockView: View {
             .background(background)
     }
 }
+
+struct ListBlockView: View {
+    let items: [MarkdownListItem]
+    /// Optional per-item opacity (staged reveal). Items with opacity 0 are not laid out.
+    let alphas: [Double]?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(items.indices, id: \.self) { index in
+                let alpha = alphas?[index] ?? 1
+                if alpha > 0 {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(items[index].marker)
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(Color.accentColor)
+                            .frame(minWidth: 18, alignment: .trailing)
+                        Text(InlineMarkdown.attributed(items[index].text))
+                            .font(.system(size: 16))
+                            .lineSpacing(3)
+                    }
+                    .padding(.leading, CGFloat(items[index].indent) * 16)
+                    .opacity(alpha)
+                }
+            }
+        }
+    }
+}
+
+/// Renders a reply that is being revealed sentence by sentence: every unit fades from 0 to 1; units that have
+/// not started yet are not laid out. `alphas` is indexed by unit, in reading order.
+struct StagedMarkdownView: View {
+    let content: StagedContent
+    let alphas: [Double]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
+                entry.view
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private struct Entry {
+        let view: AnyView
+    }
+
+    private var entries: [Entry] {
+        var result: [Entry] = []
+        var unit = 0
+        for block in content.blocks {
+            let count = block.unitCount
+            let slice = (0..<count).map { unit + $0 < alphas.count ? alphas[unit + $0] : 0 }
+            unit += count
+            switch block {
+            case .paragraph(let sentences):
+                guard slice.contains(where: { $0 > 0 }) else { continue }
+                var text = AttributedString()
+                for (sentence, alpha) in zip(sentences, slice) where alpha > 0 {
+                    text += InlineMarkdown.attributed(sentence, alpha: alpha)
+                }
+                result.append(Entry(view: AnyView(Text(text).font(.system(size: 16)).lineSpacing(3))))
+            case .list(let items):
+                guard slice.contains(where: { $0 > 0 }) else { continue }
+                result.append(Entry(view: AnyView(ListBlockView(items: items, alphas: slice))))
+            case .other(let other):
+                guard let alpha = slice.first, alpha > 0 else { continue }
+                result.append(Entry(view: AnyView(BlockView(block: other).opacity(alpha))))
+            }
+        }
+        return result
+    }
+}
+
