@@ -56,7 +56,11 @@ enum DemoData {
 /// Simulated backend for UI tests (`-uiTestFakeStream`): a silent "reasoning" pause, then the sample reply in small chunks.
 struct DemoStreamingClient: ChatStreaming {
     func stream(messages: [APIMessage]) -> AsyncThrowingStream<String, Error> {
-        AsyncThrowingStream { continuation in
+        // `-uiTestPhotoQuota`: the photo model's quota is "full" — any request containing a photo fails with HTTP 402.
+        if CommandLine.arguments.contains("-uiTestPhotoQuota"), messages.contains(where: { !$0.imageURLs.isEmpty }) {
+            return AsyncThrowingStream { $0.finish(throwing: ChatAPIError.insufficientCredits) }
+        }
+        return AsyncThrowingStream { continuation in
             let task = Task {
                 try? await Task.sleep(for: .milliseconds(700))
                 let text = DemoData.markdownSample

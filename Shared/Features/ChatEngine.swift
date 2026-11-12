@@ -16,6 +16,8 @@ final class ChatEngine {
     nonisolated static let maxContextMessages = 30
     /// Only the most recent messages that carry photos are sent with their pictures (request size).
     nonisolated static let maxPhotoMessages = 3
+    nonisolated static let photoApology = "Sorry — I can't look at photos right now. The photo model's free quota is full. You can send your message again without the photo, or try again a little later."
+    nonisolated static let photoUnavailableNote = "(The user attached a photo, but you cannot see it right now. Say so briefly and help with the text.)"
     nonisolated static let stoppedNote = "You stopped the response."
     nonisolated static let systemPrompt = "You are a helpful, concise assistant. Answer in the user's language."
 
@@ -68,6 +70,17 @@ final class ChatEngine {
         generate(in: chat, context: context)
     }
 
+    /// Re-asks the last question without any pictures (when the photo model is unavailable). The photos stay visible
+    /// in the chat; the model is told that a photo was attached but cannot be seen.
+    func retryWithoutPhotos(_ chat: Chat, context: ModelContext) {
+        guard !state(for: chat).isGenerating else { return }
+        while let last = chat.lastMessage, last.role == .note { remove(last, from: chat, context: context) }
+        if let last = chat.lastMessage, last.role == .assistant { remove(last, from: chat, context: context) }
+        try? context.save()
+        guard chat.lastMessage?.role == .user else { return }
+        generate(in: chat, context: context, includePhotos: false)
+    }
+
     /// Stops the running generation. The partial reply is kept and a "stopped" note is added to the chat;
     /// this is not an error.
     func stop(_ chat: Chat) {
@@ -92,9 +105,10 @@ final class ChatEngine {
 
     // MARK: Generation
 
-    private func generate(in chat: Chat, context: ModelContext) {
+    private func generate(in chat: Chat, context: ModelContext, includePhotos: Bool = true) {
         let chatID = chat.id
-        let history = Self.buildRequest(from: chat.sortedMessages, mode: chat.mode, profile: profile())
+        let history = Self.buildRequest(from: chat.sortedMessages, mode: chat.mode, profile: profile(), includePhotos: includePhotos)
+        let hadPhotos = history.contains { !$0.imageURLs.isEmpty }
         states[chatID] = State(isGenerating: true, error: nil)
 
         tasks[chatID] = Task { [weak self, client] in
@@ -127,6 +141,14 @@ final class ChatEngine {
                 note.chat = chat
                 context.insert(note)
             }
+            // The photo model cannot be used (quota full, rate limited, unavailable): the assistant says so in the chat
+            // and offers to continue without the photo, instead of a bare error banner.
+            if hadPhotos, reply == nil, let problem = failure, Self.isPhotoModelProblem(problem) {
+                let apology = Message(role: .assistant, content: Self.photoApology)
+                apology.chat = chat
+                context.insert(apology)
+                failure = nil
+            }
             chat.updatedAt = .now
             try? context.save()
             self.finish(chatID: chatID, error: failure)
@@ -140,12 +162,26 @@ final class ChatEngine {
 
     // MARK: Helpers
 
-    nonisolated static func buildRequest(from messages: [Message], mode: ChatMode? = nil, profile: UserProfile = UserProfile()) -> [APIMessage] {
+    /// Quota / availability problems that mean "the photo model can't be used right now".
+    nonisolated static func isPhotoModelProblem(_ error: ChatAPIError) -> Bool {
+        switch error {
+        case .insufficientCredits, .rateLimited, .forbidden, .modelUnavailable: true
+        default: false
+        }
+    }
+
+    nonisolated static func buildRequest(from messages: [Message], mode: ChatMode? = nil, profile: UserProfile = UserProfile(), includePhotos: Bool = true) -> [APIMessage] {
         let conversation = messages.filter { $0.role != .note }.suffix(maxContextMessages)
-        let withPhotos = Set(conversation.filter { !$0.attachments.isEmpty }.suffix(maxPhotoMessages).map(\.id))
+        let withPhotos: Set<UUID> = includePhotos
+            ? Set(conversation.filter { !$0.attachments.isEmpty }.suffix(maxPhotoMessages).map(\.id))
+            : []
         let recent = conversation.map { message -> APIMessage in
             guard !message.attachments.isEmpty else {
                 return APIMessage(role: message.roleRaw, content: message.content)
+            }
+            if !includePhotos {
+                let text = message.content.isEmpty ? photoUnavailableNote : message.content + "\n" + photoUnavailableNote
+                return APIMessage(role: message.roleRaw, content: text)
             }
             let urls = withPhotos.contains(message.id)
                 ? message.sortedAttachments.map { "data:image/jpeg;base64," + $0.data.base64EncodedString() }

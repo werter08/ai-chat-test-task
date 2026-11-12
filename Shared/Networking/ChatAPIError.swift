@@ -13,6 +13,8 @@ enum ChatAPIError: Error, Equatable, LocalizedError {
     case badRequest(String?)
     case server(String?)
     case invalidResponse
+    /// The stream finished with reasoning but no answer text.
+    case noAnswer
     /// The last user message never got an answer (e.g. the app was closed mid-request).
     case noResponse
 
@@ -29,6 +31,7 @@ enum ChatAPIError: Error, Equatable, LocalizedError {
         case .badRequest: "Request failed"
         case .server: "Server error"
         case .invalidResponse: "Unexpected response"
+        case .noAnswer: "No answer received"
         case .noResponse: "No reply received"
         }
     }
@@ -46,6 +49,7 @@ enum ChatAPIError: Error, Equatable, LocalizedError {
         case .badRequest(let detail): detail ?? "The server rejected the request."
         case .server(let detail): detail ?? "The AI provider failed to generate a reply."
         case .invalidResponse: "The server returned data the app could not read."
+        case .noAnswer: "The model thought about it but did not write an answer. Try again."
         case .noResponse: "The assistant did not answer this message."
         }
     }

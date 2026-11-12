@@ -41,12 +41,17 @@ struct OpenRouterClient: ChatStreaming {
     var model: String = Secrets.model
     /// Used instead of `model` whenever a request contains a photo.
     var visionModel: String = Secrets.visionModel
+    /// Always sent: without it the provider reserves the model's maximum (131k tokens) and the request is refused
+    /// with HTTP 402 when the account cannot afford that, even if the answer would be short.
+    nonisolated static let maxTokens = 4096
+
     var keyProvider: @Sendable () -> String? = { KeyVault.apiKey() }
 
     private struct RequestBody: Encodable {
         let model: String
         let messages: [APIMessage]
         let stream: Bool
+        let max_tokens: Int
     }
 
     private struct ErrorBody: Decodable {
@@ -76,7 +81,8 @@ struct OpenRouterClient: ChatStreaming {
                         RequestBody(
                             model: Self.chooseModel(for: messages, text: model, vision: visionModel),
                             messages: messages,
-                            stream: true
+                            stream: true,
+                            max_tokens: Self.maxTokens
                         )
                     )
 
@@ -94,6 +100,7 @@ struct OpenRouterClient: ChatStreaming {
                     }
 
                     var receivedDelta = false
+                    var receivedReasoning = false
                     for try await line in bytes.lines {
                         switch SSEParser.parse(line: line) {
                         case .delta(let text):
@@ -104,12 +111,14 @@ struct OpenRouterClient: ChatStreaming {
                             return
                         case .error(let code, let message):
                             throw ChatAPIError.from(status: code ?? 502, message: message)
+                        case .reasoning:
+                            receivedReasoning = true
                         case .ignore:
                             continue
                         }
                     }
                     // Stream ended without [DONE]: fine if we got text, otherwise treat as a failure.
-                    if receivedDelta { continuation.finish() } else { throw ChatAPIError.invalidResponse }
+                    if receivedDelta { continuation.finish() } else { throw receivedReasoning ? ChatAPIError.noAnswer : ChatAPIError.invalidResponse }
                 } catch {
                     if let mapped = ChatAPIError.from(transport: error) {
                         continuation.finish(throwing: mapped)

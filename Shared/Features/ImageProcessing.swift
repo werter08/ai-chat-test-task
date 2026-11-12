@@ -8,6 +8,16 @@ struct DraftImage: Identifiable, Equatable {
     let jpeg: Data
 }
 
+/// How the photo picker hands over a picture: any image type (HEIC, JPEG, PNG …). Loading plain `Data` can fail on
+/// macOS, where the library item is not generic data.
+struct PickedPhoto: Transferable {
+    let data: Data
+
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(importedContentType: .image) { PickedPhoto(data: $0) }
+    }
+}
+
 /// Cross-platform (ImageIO) helpers: no UIKit / AppKit needed.
 enum ImageProcessing {
     static let maxPhotosPerMessage = 4

@@ -4,6 +4,7 @@ import Foundation
 enum SSEParser {
     enum Event: Equatable {
         case delta(String)
+        case reasoning
         case done
         case error(code: Int?, message: String)
         case ignore
@@ -11,7 +12,7 @@ enum SSEParser {
 
     private struct Chunk: Decodable {
         struct Choice: Decodable {
-            struct Delta: Decodable { let content: String? }
+            struct Delta: Decodable { let content: String?; let reasoning: String? }
             let delta: Delta?
             let finish_reason: String?
         }
@@ -41,6 +42,9 @@ enum SSEParser {
         }
         if let text = chunk.choices?.first?.delta?.content, !text.isEmpty {
             return .delta(text)
+        }
+        if let thinking = chunk.choices?.first?.delta?.reasoning, !thinking.isEmpty {
+            return .reasoning
         }
         return .ignore
     }

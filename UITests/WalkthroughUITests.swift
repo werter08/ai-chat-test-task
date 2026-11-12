@@ -285,5 +285,29 @@ final class WalkthroughUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Copy"].exists)
         shot("16_long_press_menu")
     }
+
+    /// Photo model quota full: the assistant says so in the chat (no bare error banner) and offers a way forward.
+    func testPhotoQuotaFullShowsApologyAndAllowsSendingWithoutPhoto() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-didSeeOnboarding", "YES", "-uiTestInMemory", "-uiTestSeedPhoto", "-uiTestFakeStream", "-uiTestPhotoQuota"]
+        app.launch()
+        let field = app.textFields["Ask me anything…"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        field.typeText("What is this?")
+        app.buttons["Send message"].tap()
+
+        let apology = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Sorry'")).firstMatch
+        XCTAssertTrue(apology.waitForExistence(timeout: 8), "the assistant should apologise that it cannot look at photos")
+        XCTAssertTrue(app.buttons["Send without photo"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Try again"].exists)
+        XCTAssertFalse(app.staticTexts["API limit reached"].exists, "no bare error banner for this case")
+        shot("20_photo_apology")
+
+        app.buttons["Send without photo"].tap()
+        XCTAssertTrue(app.staticTexts["The core idea"].waitForExistence(timeout: 10), "the question is answered without the photo")
+        XCTAssertFalse(app.buttons["Send without photo"].exists)
+        shot("21_answered_without_photo")
+    }
 }
 

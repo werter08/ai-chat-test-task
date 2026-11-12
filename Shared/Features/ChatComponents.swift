@@ -25,9 +25,16 @@ struct TypingCursor: View {
     }
 }
 
+/// Actions offered under the assistant's "photos are unavailable" message.
+struct PhotoRecovery {
+    let tryAgain: () -> Void
+    let sendWithoutPhoto: () -> Void
+}
+
 struct MessageBubble: View {
     let message: Message
     let isStreaming: Bool
+    let photoRecovery: PhotoRecovery?
     @Environment(Toast.self) private var toast
     @State private var copied = false
     /// True while the reply is being revealed sentence by sentence (only for replies streamed right now).
@@ -38,9 +45,10 @@ struct MessageBubble: View {
     /// Natural height of the staged content; the visible frame animates towards it.
     @State private var stagedHeight: CGFloat = 0
 
-    init(message: Message, isStreaming: Bool = false) {
+    init(message: Message, isStreaming: Bool = false, photoRecovery: PhotoRecovery? = nil) {
         self.message = message
         self.isStreaming = isStreaming
+        self.photoRecovery = photoRecovery
         // Stored history appears instantly; only a reply that is streaming right now is revealed gradually.
         _isStaging = State(initialValue: isStreaming)
     }
@@ -70,14 +78,31 @@ struct MessageBubble: View {
                     }
                 // Actions sit below the finished reply (never while it is still being written).
                 if !isUser && !isStaging {
-                    copyButton
-                        .transition(.opacity)
+                    if let photoRecovery {
+                        recoveryActions(photoRecovery)
+                            .transition(.opacity)
+                    } else {
+                        copyButton
+                            .transition(.opacity)
+                    }
                 }
             }
             .frame(maxWidth: isUser ? 560 : 680, alignment: isUser ? .trailing : .leading)
             .animation(.easeOut(duration: 0.25), value: isStaging)
             if !isUser { Spacer(minLength: 0) }
         }
+    }
+
+    private func recoveryActions(_ recovery: PhotoRecovery) -> some View {
+        HStack(spacing: Theme.spacing2) {
+            Button("Send without photo", action: recovery.sendWithoutPhoto)
+                .buttonStyle(PrimaryButtonStyle())
+                .frame(maxWidth: 200)
+            Button("Try again", action: recovery.tryAgain)
+                .buttonStyle(PrimaryButtonStyle(tinted: true))
+                .frame(maxWidth: 130)
+        }
+        .padding(.top, 4)
     }
 
     private var copyButton: some View {
@@ -614,15 +639,17 @@ struct ComposerView: View {
         Task {
             for item in items {
                 guard images.count < ImageProcessing.maxPhotosPerMessage else { break }
-                guard let data = try? await item.loadTransferable(type: Data.self) else {
-                    toast.show("That photo couldn't be loaded.")
+                var loaded = (try? await item.loadTransferable(type: PickedPhoto.self))?.data
+                if loaded == nil { loaded = try? await item.loadTransferable(type: Data.self) }
+                guard let data = loaded else {
+                    toast.show("That photo couldn't be loaded.", kind: .warning)
                     continue
                 }
                 let jpeg = await Task.detached { ImageProcessing.downscaledJPEG(from: data) }.value
                 if let jpeg {
                     images.append(DraftImage(jpeg: jpeg))
                 } else {
-                    toast.show("That photo couldn't be read.")
+                    toast.show("That photo couldn't be read.", kind: .warning)
                 }
             }
         }
@@ -648,7 +675,7 @@ struct ComposerView: View {
         speech.toggle(
             currentText: text,
             apply: { text = $0 },
-            report: { toast.show($0) }
+            report: { toast.show($0, kind: .warning) }
         )
     }
 

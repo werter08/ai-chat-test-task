@@ -71,7 +71,7 @@ struct ChatScreen: View {
         }
         .overlay(alignment: .top) {
             if let message = toast.message {
-                ToastView(text: message)
+                ToastView(text: message, kind: toast.kind)
                     .padding(.top, 64)
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .allowsHitTesting(false)
@@ -133,7 +133,8 @@ struct ChatScreen: View {
                         } else {
                             MessageBubble(
                                 message: message,
-                                isStreaming: state.isGenerating && message.id == messages.last?.id
+                                isStreaming: state.isGenerating && message.id == messages.last?.id,
+                                photoRecovery: photoRecovery(for: message, last: messages.last, generating: state.isGenerating)
                             )
                         }
                     }
@@ -181,6 +182,16 @@ struct ChatScreen: View {
         if let error = state.error { return error }
         if !state.isGenerating, chat.lastMessage?.role == .user { return .noResponse }
         return nil
+    }
+
+    /// For the assistant's "photos are unavailable" message (when it is the last one): Try again / Send without photo.
+    private func photoRecovery(for message: Message, last: Message?, generating: Bool) -> PhotoRecovery? {
+        guard message.role == .assistant, message.content == ChatEngine.photoApology,
+              message.id == last?.id, !generating else { return nil }
+        return PhotoRecovery(
+            tryAgain: { engine.retry(chat, context: context) },
+            sendWithoutPhoto: { engine.retryWithoutPhotos(chat, context: context) }
+        )
     }
 
     private func setMode(_ mode: ChatMode?) {

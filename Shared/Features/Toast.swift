@@ -5,11 +5,15 @@ import SwiftUI
 @MainActor
 @Observable
 final class Toast {
+    enum Kind { case success, warning }
+
     private(set) var message: String?
+    private(set) var kind: Kind = .success
     @ObservationIgnored private var task: Task<Void, Never>?
 
-    func show(_ text: String) {
+    func show(_ text: String, kind: Kind = .success) {
         task?.cancel()
+        self.kind = kind
         withAnimation(.snappy) { message = text }
         task = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1.6))
@@ -21,10 +25,13 @@ final class Toast {
 
 struct ToastView: View {
     let text: String
+    var kind: Toast.Kind = .success
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            // Problems must not look like successes: warnings get their own icon and colour.
+            Image(systemName: kind == .success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(kind == .success ? Color.green : Color.orange)
             Text(text).font(.system(size: 14, weight: .semibold))
         }
         .foregroundStyle(.white)
