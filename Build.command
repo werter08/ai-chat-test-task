@@ -12,6 +12,13 @@ echo "== AI Chat: build for iOS Simulator =="
 command -v xcodegen >/dev/null 2>&1 || fail "xcodegen not found. Install it with: brew install xcodegen"
 command -v xcodebuild >/dev/null 2>&1 || fail "xcodebuild not found. Install Xcode and run: sudo xcode-select -s /Applications/Xcode.app"
 
+# A build writes ~0.5-1 GB (module caches, derived data). On a full disk the compiler fails with a cryptic
+# "No space left on device" deep inside Xcode's output, so check first and say it plainly.
+FREE_MB=$(df -m . | awk 'NR==2 {print $4}')
+if [ "${FREE_MB:-0}" -lt 1500 ]; then
+    fail "Only ${FREE_MB} MB of free disk space — a build needs about 1.5 GB. Free some space (empty the Trash, delete ~/Library/Developer/Xcode/DerivedData, remove unused simulators or old Xcode archives) and run Build.command again."
+fi
+
 echo "-- Embedding API key (if .env has one)"
 swift scripts/obfuscate_key.swift .env Shared/Security/Secrets.generated.swift || fail "key obfuscation failed"
 
