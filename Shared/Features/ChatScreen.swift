@@ -13,8 +13,10 @@ struct ChatScreen: View {
     @AppStorage(UserProfile.nameKey) private var userName = ""
     @State private var draft = ""
     @State private var composerSize: ComposerSize = .compact
-
-    private static let bottomID = "bottom"
+    /// True when part of the conversation is below the visible area.
+    @State private var hasMoreBelow = false
+    /// Drives programmatic scrolling (iOS 18 API): jump to the bottom, or bring a sent message to the top.
+    @State private var scrollPosition = ScrollPosition(edge: .bottom)
 
     var body: some View {
         GeometryReader { geo in
@@ -108,12 +110,15 @@ struct ChatScreen: View {
     // MARK: Conversation
 
     /// Not lazy on purpose: a lazy stack + "scroll to bottom on appear" left reopened chats blank until dragged.
-    /// `defaultScrollAnchor(.bottom)` makes every chat open at its newest message.
+    ///
+    /// Scrolling rules: a reopened chat starts at its newest message; when you send, your message is scrolled to
+    /// the top once and the reply grows beneath it — nothing follows the text while it is written, so you can read
+    /// from the top. When the reply is ready, a "Go down" bubble appears if part of it is below the fold.
     private func conversation(messages: [Message], state: ChatEngine.State) -> some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(spacing: 12) {
-                    ForEach(messages) { message in
+        ScrollView {
+            VStack(spacing: 12) {
+                ForEach(messages) { message in
+                    Group {
                         if message.role == .note {
                             NoteRow(
                                 text: message.content,
@@ -123,27 +128,45 @@ struct ChatScreen: View {
                         } else {
                             MessageBubble(
                                 message: message,
-                                isStreaming: state.isGenerating && message.id == messages.last?.id,
-                                onReveal: { scrollToBottom(proxy, animated: true) }
+                                isStreaming: state.isGenerating && message.id == messages.last?.id
                             )
                         }
                     }
-                    if state.isGenerating && messages.last?.role != .assistant {
-                        TypingIndicator()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    Color.clear.frame(height: 1).id(Self.bottomID)
+                    .id(message.id)
                 }
-                .padding(.horizontal, Theme.spacing3)
-                .padding(.vertical, 12)
+                if state.isGenerating && messages.last?.role != .assistant {
+                    TypingIndicator()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
-            .defaultScrollAnchor(.bottom)
-            // Keeps the newest text pinned to the bottom while a reply grows (smoothly, no per-frame scrolling).
-            .defaultScrollAnchor(.bottom, for: .sizeChanges)
-            .scrollDismissesKeyboard(.interactively)
-            .onChange(of: messages.count) { scrollToBottom(proxy, animated: true) }
-            .onChange(of: state.isGenerating) { scrollToBottom(proxy, animated: true) }
+            .scrollTargetLayout()
+            .padding(.horizontal, Theme.spacing3)
+            .padding(.vertical, 12)
         }
+        .scrollPosition($scrollPosition)
+        .defaultScrollAnchor(.bottom, for: .initialOffset)
+        .scrollDismissesKeyboard(.interactively)
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.visibleRect.maxY < geometry.contentSize.height - 80
+        } action: { _, moreBelow in
+            hasMoreBelow = moreBelow
+        }
+        .onChange(of: messages.count) {
+            guard let last = messages.last, last.role == .user else { return }
+            let id = last.id
+            Task { @MainActor in
+                await Task.yield()
+                withAnimation(.easeInOut(duration: 0.35)) { scrollPosition.scrollTo(id: id, anchor: .top) }
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if hasMoreBelow && !state.isGenerating {
+                GoDownButton { scrollToBottom() }
+                    .padding(.bottom, Theme.spacing3)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: hasMoreBelow && !state.isGenerating)
     }
 
     // MARK: Actions
@@ -166,11 +189,7 @@ struct ChatScreen: View {
         composerSize = .compact
     }
 
-    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool) {
-        if animated {
-            withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
-        } else {
-            proxy.scrollTo(Self.bottomID, anchor: .bottom)
-        }
+    private func scrollToBottom() {
+        withAnimation(.easeInOut(duration: 0.5)) { scrollPosition.scrollTo(edge: .bottom) }
     }
 }

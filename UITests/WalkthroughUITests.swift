@@ -176,18 +176,29 @@ final class WalkthroughUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Copy"].exists, "Copy appears only once the reply is finished")
         sleep(2)
         shot("12b_typing_mid")
+        XCTAssertTrue(heading.isHittable, "the view stays at the top of the reply while it is written")
+        XCTAssertFalse(app.buttons["Go down"].exists, "the Go down bubble only appears once the reply is ready")
 
         // Eventually everything is there.
         XCTAssertTrue(app.staticTexts["suspension point"].waitForExistence(timeout: 30), "full reply should appear")
         sleep(1)
         shot("13_typed_done")
         XCTAssertFalse(app.buttons["Stop generating"].exists)
-        // Copy sits below the finished message, under its last line.
+        // The view did not follow the text: the top of the reply is still where it was, and the bottom is offscreen.
+        XCTAssertTrue(heading.isHittable, "the reply stays at the top, it must not be dragged to the bottom")
+        let goDown = app.buttons["Go down"]
+        XCTAssertTrue(goDown.waitForExistence(timeout: 5), "a Go down bubble should offer to jump to the end")
+        shot("13b_go_down_bubble")
+
+        // Tapping it scrolls to the bottom: Copy (below the message) becomes visible and the bubble goes away.
+        goDown.tap()
         let copy = app.buttons["Copy"].firstMatch
-        XCTAssertTrue(copy.waitForExistence(timeout: 5), "Copy should appear after the reply finishes")
+        XCTAssertTrue(copy.waitForExistence(timeout: 5))
+        sleep(2)
+        XCTAssertTrue(copy.isHittable, "Copy sits below the message and is visible after going down")
         XCTAssertGreaterThan(copy.frame.minY, app.staticTexts["suspension point"].frame.maxY - 1, "Copy should be below the message")
-        sleep(1)
-        XCTAssertTrue(copy.isHittable, "after finishing, the bottom of the reply (incl. Copy) must be visible, not hidden under the composer")
+        XCTAssertFalse(app.buttons["Go down"].exists, "the bubble disappears at the bottom")
+        shot("13c_after_go_down")
     }
 
     /// Stopping mid-stream is not an error: partial text stays and a note appears.

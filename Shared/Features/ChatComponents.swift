@@ -27,7 +27,6 @@ struct TypingCursor: View {
 struct MessageBubble: View {
     let message: Message
     let isStreaming: Bool
-    let onReveal: () -> Void
     @Environment(Toast.self) private var toast
     @State private var copied = false
     /// True while the reply is being revealed sentence by sentence (only for replies streamed right now).
@@ -38,10 +37,9 @@ struct MessageBubble: View {
     /// Natural height of the staged content; the visible frame animates towards it.
     @State private var stagedHeight: CGFloat = 0
 
-    init(message: Message, isStreaming: Bool = false, onReveal: @escaping () -> Void = {}) {
+    init(message: Message, isStreaming: Bool = false) {
         self.message = message
         self.isStreaming = isStreaming
-        self.onReveal = onReveal
         // Stored history appears instantly; only a reply that is streaming right now is revealed gradually.
         _isStaging = State(initialValue: isStreaming)
     }
@@ -162,10 +160,6 @@ struct MessageBubble: View {
             if alphas.allSatisfy({ $0 >= 1 }) {
                 if !isStreaming {
                     isStaging = false   // finished: render the full text normally, Copy row appears
-                    // Growth while typing is followed by the scroll view itself; after the final layout change
-                    // (Copy row) ask for one smooth scroll so nothing ends up hidden under the composer.
-                    try? await Task.sleep(for: .milliseconds(150))
-                    onReveal()
                 }
                 return   // otherwise idle until more text arrives (the task restarts with it)
             }
@@ -181,6 +175,29 @@ struct MessageBubble: View {
             try? await Task.sleep(for: .seconds(1.5))
             withAnimation(.snappy) { copied = false }
         }
+    }
+}
+
+/// Floating "go to the latest message" bubble, shown when the reply is ready and part of it is below the fold.
+struct GoDownButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.down")
+                    .font(.system(size: 13, weight: .bold))
+                Text("Go down")
+                    .font(.system(size: 14, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color.accentColor, in: Capsule())
+            .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Go down")
     }
 }
 
