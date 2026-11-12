@@ -9,7 +9,7 @@ Goal: the test task in `TASK.md` — an AI chat app for iPhone (iOS 18+), built 
 | Persistence | SwiftData (`Chat` 1—* `Message`, cascade delete) | Native, iOS 17+, autosave |
 | Streaming | `URLSession.bytes` → SSE line parser → `AsyncThrowingStream<String>` | No dependencies, cancellable |
 | Orchestration | `@Observable ChatEngine`, one task per chat | Generation continues if user switches chats; Stop = cancel task |
-| AI | OpenRouter, free model `baidu/ernie-5.5-flash-preview` | Free, OpenAI-compatible API |
+| AI | OpenRouter, free model `baidu/ernie-5.5-flash-preview:free` | Free, OpenAI-compatible API |
 | Key | `.env` → `scripts/obfuscate_key.swift` → XOR+salt byte arrays in generated Swift file | Not plain text in repo/binary strings; app runs without setup. Obfuscation ≠ security (documented) |
 | Project | XcodeGen `project.yml`, no packages | Task requirement |
 | Mac | Second target `AIChatMac` sharing `Shared/` | Optional extra |

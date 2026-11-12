@@ -38,7 +38,7 @@ guard let envText = try? String(contentsOfFile: envPath, encoding: .utf8) else {
 }
 let env = parseEnv(envText)
 let key = env["OPENROUTER_API_KEY"] ?? ""
-let model = (env["OPENROUTER_MODEL"] ?? "").isEmpty ? "baidu/ernie-5.5-flash-preview" : env["OPENROUTER_MODEL"]!
+let model = (env["OPENROUTER_MODEL"] ?? "").isEmpty ? "baidu/ernie-5.5-flash-preview:free" : env["OPENROUTER_MODEL"]!
 
 let isPlaceholder = key.isEmpty || key.contains("<") || key.uppercased().contains("API_KEY") || key.uppercased().contains("PASTE")
 if isPlaceholder {
