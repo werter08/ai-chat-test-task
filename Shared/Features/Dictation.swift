@@ -1,5 +1,6 @@
 import AVFoundation
 import Observation
+import OSLog
 import Speech
 
 // Speech-to-text input (Apple Speech framework). Dictated text is placed into the message box *before* sending.
@@ -35,8 +36,9 @@ enum SpeechError: LocalizedError, Equatable {
 @MainActor
 protocol SpeechService: AnyObject {
     /// Asks for permission if needed, then starts listening. `onText` receives the *full* transcript so far
-    /// (each call replaces the previous one); `onEnd` fires when listening stops on its own.
-    func start(onText: @escaping @MainActor (String) -> Void, onEnd: @escaping @MainActor () -> Void) async throws
+    /// (each call replaces the previous one); `onEnd` fires when listening stops on its own — with a short
+    /// user-facing reason when it stopped because of a problem (nil = a normal end).
+    func start(onText: @escaping @MainActor (String) -> Void, onEnd: @escaping @MainActor (String?) -> Void) async throws
     func stop()
 }
 
@@ -45,11 +47,15 @@ protocol SpeechService: AnyObject {
 @MainActor
 final class AppleSpeechService: SpeechService {
     private let audioEngine = AVAudioEngine()
+    private let log = Logger(subsystem: "app.aichat", category: "speech")
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private var isRunning = false
+    private var heardSomething = false
+    /// Distinguishes recognition tasks, so a late callback from a cancelled one is ignored.
+    private var generation = 0
 
-    func start(onText: @escaping @MainActor (String) -> Void, onEnd: @escaping @MainActor () -> Void) async throws {
+    func start(onText: @escaping @MainActor (String) -> Void, onEnd: @escaping @MainActor (String?) -> Void) async throws {
         guard !isRunning else { return }
         try await requestPermissions()
 
@@ -60,11 +66,29 @@ final class AppleSpeechService: SpeechService {
         guard let recognizer else {
             throw SpeechError.unavailable("Speech recognition isn't available for your language right now.")
         }
+        heardSomething = false
+        // Prefer fully on-device recognition (private, works offline) where the language supports it; if that
+        // fails before anything was recognised (e.g. the model is not downloaded) it is retried through Apple's servers.
+        let onDevice = recognizer.supportsOnDeviceRecognition
+        log.info("start: locale=\(recognizer.locale.identifier, privacy: .public) onDevice=\(onDevice, privacy: .public)")
+        try beginSession(recognizer: recognizer, onDevice: onDevice, mayFallBack: onDevice, onText: onText, onEnd: onEnd)
+    }
 
+    func stop() {
+        guard isRunning else { return }
+        teardown()
+    }
+
+    private func beginSession(
+        recognizer: SFSpeechRecognizer,
+        onDevice: Bool,
+        mayFallBack: Bool,
+        onText: @escaping @MainActor (String) -> Void,
+        onEnd: @escaping @MainActor (String?) -> Void
+    ) throws {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
-        // Prefer fully on-device recognition (private, works offline) where the language supports it.
-        if recognizer.supportsOnDeviceRecognition { request.requiresOnDeviceRecognition = true }
+        request.requiresOnDeviceRecognition = onDevice
 
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
@@ -86,25 +110,59 @@ final class AppleSpeechService: SpeechService {
             throw SpeechError.unavailable("The microphone could not be started.")
         }
 
+        generation += 1
+        let mine = generation
         self.request = request
         isRunning = true
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
             let transcript = result?.bestTranscription.formattedString
-            let finished = (result?.isFinal ?? false) || error != nil
+            let isFinal = result?.isFinal ?? false
+            let nsError = error as NSError?
             Task { @MainActor [weak self] in
-                guard let self, self.isRunning else { return }   // stopped by the user: ignore late results
-                if let transcript { onText(transcript) }
-                if finished {
+                guard let self, self.isRunning, self.generation == mine else { return }   // stopped / superseded
+                if let transcript, !transcript.isEmpty {
+                    self.heardSomething = true
+                    onText(transcript)
+                }
+                if let nsError {
+                    self.log.error("recognition error: \(nsError.domain, privacy: .public) \(nsError.code, privacy: .public) heard=\(self.heardSomething, privacy: .public) onDevice=\(onDevice, privacy: .public)")
+                    if mayFallBack, !self.heardSomething {
+                        // The on-device model failed before recognising anything: retry once through Apple's servers.
+                        self.teardown()
+                        do {
+                            try self.beginSession(recognizer: recognizer, onDevice: false, mayFallBack: false, onText: onText, onEnd: onEnd)
+                        } catch {
+                            onEnd("Dictation could not be started.")
+                        }
+                        return
+                    }
                     self.teardown()
-                    onEnd()
+                    onEnd(Self.userMessage(for: nsError, heardSomething: self.heardSomething))
+                } else if isFinal {
+                    self.teardown()
+                    onEnd(nil)
                 }
             }
         }
     }
 
-    func stop() {
-        guard isRunning else { return }
-        teardown()
+    /// Maps a recognition error to a short message; nil means "a normal end, nothing to report".
+    nonisolated static func userMessage(for error: NSError, heardSomething: Bool) -> String? {
+        switch (error.domain, error.code) {
+        case ("kAFAssistantErrorDomain", 1110):
+            // "No speech detected": the session timed out. Normal if something was dictated before.
+            return heardSomething ? nil : "I didn't hear anything. Check the microphone and try again."
+        case ("kAFAssistantErrorDomain", 216), ("kLSRErrorDomain", 301):
+            return nil   // cancelled
+        case ("kLSRErrorDomain", 300):
+            // Apple's recognizer failed to initialise (on-device and server attempts alike) before any audio was
+            // processed. Observed on the iOS Simulator, which has no working speech engine.
+            return "Speech recognition isn't working here (error 300). It usually doesn't work in the iOS Simulator — try a real iPhone or the Mac app."
+        case ("kAFAssistantErrorDomain", 1101), ("kAFAssistantErrorDomain", 1107):
+            return "Dictation is turned off on this device (Settings → Keyboard → Enable Dictation)."
+        default:
+            return "Dictation stopped (\(error.domain) \(error.code))."
+        }
     }
 
     private func teardown() {
@@ -167,7 +225,10 @@ final class SpeechInput {
                         guard let self else { return }
                         apply(SpeechTextMerger.merge(base: self.base, transcript: transcript))
                     },
-                    onEnd: { [weak self] in self?.isListening = false }
+                    onEnd: { [weak self] reason in
+                        self?.isListening = false
+                        if let reason { report(reason) }
+                    }
                 )
                 isListening = true
             } catch let error as SpeechError {

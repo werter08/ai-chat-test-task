@@ -83,7 +83,7 @@ struct DemoStreamingClient: ChatStreaming {
 final class FakeSpeechService: SpeechService {
     private var task: Task<Void, Never>?
 
-    func start(onText: @escaping @MainActor (String) -> Void, onEnd: @escaping @MainActor () -> Void) async throws {
+    func start(onText: @escaping @MainActor (String) -> Void, onEnd: @escaping @MainActor (String?) -> Void) async throws {
         let words = ["Hello", "from", "speech", "input"]
         task = Task {
             for index in words.indices {

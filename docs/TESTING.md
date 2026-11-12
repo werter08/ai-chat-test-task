@@ -10,6 +10,7 @@
 - UI tests still to add/run: dictation fills the box before sending (`-uiTestFakeSpeech`), a seeded photo previews above the text box and above the message text once sent (`-uiTestSeedPhoto`), removing a photo. `testComposerExpandsToThirdThenFullScreen` was adjusted for the new row (tools next to Send) but not re-run.
 - Run once (not the full suite): `testPhotoQuotaFullShowsApologyAndAllowsSendingWithoutPhoto` (debug switch `-uiTestPhotoQuota` makes photo requests fail with HTTP 402) — passes; screenshots checked.
 - Verified by hand: a command-line program compiled from the app's own networking sources sent a real photo through `OpenRouterClient` (vision model, `max_tokens`, SSE parsing) and got a correct description; the earlier failure was reproduced with a raw request (HTTP 402: the request reserved 131072 tokens).
+- Dictation in the iOS Simulator: a temporary UI probe with the real recognizer showed `kLSRErrorDomain 300` on both the on-device and the server attempt (permissions granted, ~0.3 s after start) — an environment limit, not recorded in the test suite. The app logs it (`subsystem app.aichat`, category `speech`) and reports it to the user.
 - Verified by hand (earlier): the vision model answers correctly to a request with an image (direct API call), and the composer layout (photo strip above the text box, photo and mic buttons) in a simulator screenshot. Not verified: real speech recognition, tapping the system photo picker.
 
 ## Running

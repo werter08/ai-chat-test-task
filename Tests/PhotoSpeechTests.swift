@@ -38,7 +38,7 @@ final class SpeechInputTests: XCTestCase {
         var error: SpeechError?
         private(set) var stopped = false
 
-        func start(onText: @escaping @MainActor (String) -> Void, onEnd: @escaping @MainActor () -> Void) async throws {
+        func start(onText: @escaping @MainActor (String) -> Void, onEnd: @escaping @MainActor (String?) -> Void) async throws {
             if let error { throw error }
             for transcript in transcripts { onText(transcript) }
         }
