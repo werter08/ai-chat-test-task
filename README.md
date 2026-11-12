@@ -23,7 +23,9 @@ The key is XOR-ed with a random salt by `scripts/obfuscate_key.swift` and stored
 
 ## What works
 - Streaming replies as they are generated; **Stop** keeps the partial reply.
-- Multiple chats (create, switch, swipe/long-press to delete); history persists across restarts (SwiftData).
+- Opens straight into an empty chat with a greeting and mode cards. Modes (Writing, Creative, Conversation, Personal, Developer) change the system prompt and offer quick prompts.
+- Multiple chats: new chat (pencil icon), History (clock icon) with swipe-to-delete and delete-all, and Search with saved recent searches; history persists across restarts (SwiftData).
+- Settings (grid icon): your name, custom instructions added to every chat, System/Light/Dark theme, delete all chats, Help and Privacy pages.
 - States: empty list, empty chat (greeting + starter prompts), typing indicator, and errors with **Retry** — no network, timeout, invalid key, limit reached (402/429), model unavailable, server error, missing key. After a restart, a chat ending in an unanswered message also offers Retry.
 - Light and dark themes; design kit applied (red accent, 16px cards, 48px controls, onboarding on first launch).
 - iOS 18 minimum (no newer APIs used), macOS 15 target `AIChatMac` sharing the same code.
@@ -32,7 +34,7 @@ The key is XOR-ed with a random salt by `scripts/obfuscate_key.swift` and stored
 ## Not done / known issues
 - Photo attachments and offline Apple Foundation Models mode (optional items) — not implemented.
 - Onboarding uses SF Symbols instead of the robot illustrations from the design kit (no exported assets); Urbanist font not bundled (system font used).
-- Login/sign-up/OTP screens from the design kit are intentionally skipped (not in the task).
+- Login/sign-up/OTP, the Pro banner, Notifications, Security and Logout from the design kit are intentionally skipped (no accounts or backend in the task).
 - Only an iOS 26.5 simulator was available for testing; iOS 18 is covered by API choice, not by a run on an iOS 18 runtime.
 - Replies are rendered with inline Markdown only (no code blocks/lists).
 - The free model can be rate limited (429); the app shows the error with Retry.
@@ -40,11 +42,11 @@ The key is XOR-ed with a random salt by `scripts/obfuscate_key.swift` and stored
 - The macOS target builds, but I did not run or visually check it.
 
 ## How it was verified
-- 19 unit tests (`xcodebuild test`): SSE parser, error mapping, key round-trip, and `ChatEngine` with a mock backend (send, stream, failure leaves no empty bubble, retry after failure and after mid-stream error, stop keeps partial, blank input ignored, context cap). One of these caught a real bug (Retry did nothing after a mid-stream error).
+- 29 unit tests (2 more are opt-in live tests) (`xcodebuild test`): SSE parser, error mapping, key round-trip, and `ChatEngine` with a mock backend (send, stream, failure leaves no empty bubble, retry after failure and after mid-stream error, stop keeps partial, blank input ignored, context cap). One of these caught a real bug (Retry did nothing after a mid-stream error).
 - Opt-in live tests against the real API: `TEST_RUNNER_RUN_LIVE_TESTS=1 xcodebuild test ...` — streamed a real reply; an invalid key maps to "unauthorized".
 - `Build.command` run end to end (generate, build, install, launch); iOS and macOS targets both build.
 - Checked that the built `.app` contains no plain-text key.
-- Screenshots of onboarding and the chat list on the simulator. Sending a message in the running UI (tap-through) was not automated.
+- Screenshots of onboarding and the home screen on the simulator. Tap-through of History, Search, Settings and sending a message in the running UI was not automated.
 
 ## Docs
 `docs/TASK.md` (task), `docs/PLAN.md` (plan), `CLAUDE.md` (agent rules), `ai-logs/` (AI session logs, secrets redacted).

@@ -8,6 +8,10 @@ struct AIChatApp: App {
 
     init() {
         let schema = Schema([Chat.self, Message.self])
+        // SwiftData does not create this folder on a fresh install; without it Core Data logs recovery errors.
+        try? FileManager.default.createDirectory(
+            at: URL.applicationSupportDirectory, withIntermediateDirectories: true
+        )
         do {
             container = try ModelContainer(for: schema)
         } catch {

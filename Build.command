@@ -36,7 +36,8 @@ echo "-- Installing and launching"
 xcrun simctl boot "$UDID" 2>/dev/null
 open -a Simulator
 xcrun simctl bootstatus "$UDID" -b >/dev/null 2>&1
-xcrun simctl install "$UDID" "$APP" && xcrun simctl launch "$UDID" com.example.aichat \
+BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
+xcrun simctl install "$UDID" "$APP" && xcrun simctl launch "$UDID" "$BUNDLE_ID" \
     || echo "Built OK, but could not launch automatically. Run it from the Simulator."
 
 echo
