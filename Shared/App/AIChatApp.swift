@@ -4,7 +4,7 @@ import SwiftUI
 @main
 struct AIChatApp: App {
     private let container: ModelContainer
-    @State private var engine = ChatEngine(client: OpenRouterClient())
+    @State private var engine: ChatEngine
     @State private var toast = Toast()
 
     init() {
@@ -16,9 +16,12 @@ struct AIChatApp: App {
         #if DEBUG
         let arguments = CommandLine.arguments
         let inMemory = arguments.contains("-uiTestInMemory")
+        let client: ChatStreaming = arguments.contains("-uiTestFakeStream") ? DemoStreamingClient() : OpenRouterClient()
         #else
         let inMemory = false
+        let client: ChatStreaming = OpenRouterClient()
         #endif
+        _engine = State(initialValue: ChatEngine(client: client))
         do {
             container = try ModelContainer(for: schema, configurations: [ModelConfiguration(isStoredInMemoryOnly: inMemory)])
         } catch {

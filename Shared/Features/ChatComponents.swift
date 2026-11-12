@@ -1,9 +1,53 @@
 import SwiftUI
 
+/// Speed of the typewriter reveal: proportional to the backlog (so it never lags far behind the network)
+/// but never slower than one character per tick (so it always looks like typing).
+enum TypewriterPacing {
+    nonisolated static func step(backlog: Int) -> Int {
+        max(1, Int((Double(backlog) / 12).rounded(.up)))
+    }
+}
+
+private struct RevealKey: Hashable {
+    let count: Int
+    let streaming: Bool
+}
+
+struct TypingCursor: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 1.5)
+            .fill(Color.accentColor)
+            .frame(width: 3, height: 18)
+            .phaseAnimator([1.0, 0.15]) { content, phase in
+                content.opacity(phase)
+            } animation: { _ in
+                .easeInOut(duration: 0.5)
+            }
+            .accessibilityHidden(true)
+    }
+}
+
 struct MessageBubble: View {
     let message: Message
+    let isStreaming: Bool
+    let onReveal: () -> Void
     @Environment(Toast.self) private var toast
     @State private var copied = false
+    /// Characters of the reply shown so far while it is typed out; nil = show everything.
+    @State private var revealed: Int?
+
+    init(message: Message, isStreaming: Bool = false, onReveal: @escaping () -> Void = {}) {
+        self.message = message
+        self.isStreaming = isStreaming
+        self.onReveal = onReveal
+        // Only a reply that is being streamed right now is typed out; stored history appears instantly.
+        _revealed = State(initialValue: isStreaming ? 0 : nil)
+    }
+
+    private var displayedText: String {
+        guard let revealed else { return message.content }
+        return StreamingMarkdown.closeOpenMarkers(String(message.content.prefix(revealed)))
+    }
 
     private var isUser: Bool { message.role == .user }
 
@@ -45,6 +89,22 @@ struct MessageBubble: View {
         }
     }
 
+    /// Catches the displayed text up to the received text, a few characters per frame.
+    private func reveal() async {
+        guard var shown = revealed else { return }
+        let total = message.content.count
+        while shown < total, !Task.isCancelled {
+            shown = min(total, shown + TypewriterPacing.step(backlog: total - shown))
+            revealed = shown
+            onReveal()
+            try? await Task.sleep(for: .milliseconds(16))
+        }
+        if shown >= total, !isStreaming, !Task.isCancelled {
+            revealed = nil   // finished: render the full text normally
+            onReveal()
+        }
+    }
+
     private func copyMessage() {
         Clipboard.copy(message.content)
         toast.show("Copied to clipboard")
@@ -69,11 +129,15 @@ struct MessageBubble: View {
                 .frame(maxWidth: 560, alignment: .trailing)
                 .accessibilityLabel("You: \(message.content)")
         } else {
-            MarkdownView(text: message.content)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(Theme.fill, in: shape)
-                .frame(maxWidth: 680, alignment: .leading)
+            VStack(alignment: .leading, spacing: 6) {
+                MarkdownView(text: displayedText)
+                if revealed != nil { TypingCursor() }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Theme.fill, in: shape)
+            .frame(maxWidth: 680, alignment: .leading)
+            .task(id: RevealKey(count: message.content.count, streaming: isStreaming)) { await reveal() }
         }
     }
 }
@@ -254,10 +318,6 @@ struct EmptyChatContent: View {
                 Text("What would you like to do today?")
                     .font(.system(size: 18, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
-                Text("Explore what I can help with")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
-                    .padding(.top, Theme.spacing1)
             }
             .multilineTextAlignment(.center)
             .padding(.top, Theme.spacing4)
@@ -383,7 +443,7 @@ struct ComposerView: View {
         .frame(maxHeight: size == .full ? .infinity : nil, alignment: .bottom)
         .background {
             // Full-screen compose blends with the page; otherwise the composer sits on a bar material.
-            if size == .full { Color.clear } else { Rectangle().fill(.bar) }
+            if size == .full { Color.clear } else { Rectangle().fill(.bar).ignoresSafeArea(edges: .bottom) }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: size)
     }

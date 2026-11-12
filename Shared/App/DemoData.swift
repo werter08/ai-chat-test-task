@@ -50,4 +50,25 @@ enum DemoData {
         try? context.save()
     }
 }
+
+/// Simulated backend for UI tests (`-uiTestFakeStream`): a silent "reasoning" pause, then the sample reply in small chunks.
+struct DemoStreamingClient: ChatStreaming {
+    func stream(messages: [APIMessage]) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                try? await Task.sleep(for: .milliseconds(700))
+                let text = DemoData.markdownSample
+                var index = text.startIndex
+                while index < text.endIndex, !Task.isCancelled {
+                    let end = text.index(index, offsetBy: 14, limitedBy: text.endIndex) ?? text.endIndex
+                    continuation.yield(String(text[index..<end]))
+                    index = end
+                    try? await Task.sleep(for: .milliseconds(60))
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+}
 #endif

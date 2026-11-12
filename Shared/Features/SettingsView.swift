@@ -120,6 +120,8 @@ struct SettingsView: View {
                         selected ? Color.accentColor : Color.clear,
                         in: RoundedRectangle(cornerRadius: Theme.controlRadius - 2, style: .continuous)
                     )
+                    // A clear background is not hit-testable: without this only the icon/text were tappable.
+                    .contentShape(RoundedRectangle(cornerRadius: Theme.controlRadius - 2, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(option.title)

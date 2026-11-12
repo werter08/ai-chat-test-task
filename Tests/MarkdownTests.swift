@@ -59,3 +59,25 @@ final class MarkdownParserTests: XCTestCase {
         XCTAssertEqual(MarkdownParser.parse(""), [])
     }
 }
+
+final class StreamingMarkdownTests: XCTestCase {
+    func testClosesOpenItalicBoldAndInlineCode() {
+        XCTAssertEqual(StreamingMarkdown.closeOpenMarkers("a *suspendi"), "a *suspendi*")
+        XCTAssertEqual(StreamingMarkdown.closeOpenMarkers("a **bol"), "a **bol**")
+        XCTAssertEqual(StreamingMarkdown.closeOpenMarkers("use `aw"), "use `aw`")
+        XCTAssertEqual(StreamingMarkdown.closeOpenMarkers("**a** and *b"), "**a** and *b*")
+    }
+
+    func testBalancedTextIsUnchanged() {
+        for text in ["plain", "*i* **b** `c`", "## Title\n\nbody"] {
+            XCTAssertEqual(StreamingMarkdown.closeOpenMarkers(text), text)
+        }
+    }
+
+    func testListBulletsAndCodeFencesAreNotTreatedAsEmphasis() {
+        XCTAssertEqual(StreamingMarkdown.closeOpenMarkers("* one\n* two"), "* one\n* two")
+        XCTAssertEqual(StreamingMarkdown.closeOpenMarkers("```swift\nlet a = 2 * 3"), "```swift\nlet a = 2 * 3")
+        XCTAssertEqual(StreamingMarkdown.closeOpenMarkers("```\nx * y\n```\ndone *it"), "```\nx * y\n```\ndone *it*")
+    }
+}
+

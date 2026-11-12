@@ -121,7 +121,11 @@ struct ChatScreen: View {
                                     ? { engine.retry(chat, context: context) } : nil
                             )
                         } else {
-                            MessageBubble(message: message)
+                            MessageBubble(
+                                message: message,
+                                isStreaming: state.isGenerating && message.id == messages.last?.id,
+                                onReveal: { scrollToBottom(proxy, animated: false) }
+                            )
                         }
                     }
                     if state.isGenerating && messages.last?.role != .assistant {

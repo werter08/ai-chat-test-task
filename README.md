@@ -25,6 +25,7 @@ The key is XOR-ed with a random salt by `scripts/obfuscate_key.swift` and stored
 
 ## What works
 - Composer: glows while focused; a corner button cycles the editor size compact → 30% of the screen → full screen (send button moves below the editor, full width). Reopened chats open at their newest message.
+- Replies are typed out smoothly (backlog-aware typewriter reveal with a blinking cursor; half-typed `*italic*`/`code` markers are closed so no raw symbols flash).
 - Streaming replies as they are generated; **Stop** keeps the partial reply and adds a "You stopped the response." note (with Retry) — it is not treated as an error.
 - Replies are rendered as Markdown: headings, lists, quotes, tables, inline code, and code blocks with syntax colors and a Copy button. Copy actions show a checkmark and a "Copied to clipboard" toast.
 - Opens straight into an empty chat with a greeting and mode cards. Modes (Writing, Creative, Conversation, Personal, Developer) change the system prompt and offer quick prompts.

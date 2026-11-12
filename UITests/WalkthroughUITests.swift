@@ -69,10 +69,11 @@ final class WalkthroughUITests: XCTestCase {
         shot("4_settings_light")
 
         // Switching appearance changes the settings page itself.
-        app.buttons["Light"].tap()   // explicit: the simulator's system theme may be dark
+        // Tap the far-left edge of the tile (not the icon/text): the whole tile must be clickable.
+        app.buttons["Light"].coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: 0.5)).tap()
         sleep(1)
         XCTAssertGreaterThan(backgroundBrightness(), 0.7, "settings should be light")
-        app.buttons["Dark"].tap()
+        app.buttons["Dark"].coordinate(withNormalizedOffset: CGVector(dx: 0.96, dy: 0.5)).tap()
         sleep(1)
         shot("5_settings_dark")
         XCTAssertLessThan(backgroundBrightness(), 0.3, "settings page did not turn dark")
@@ -122,6 +123,9 @@ final class WalkthroughUITests: XCTestCase {
         app.launch()
         let field = app.textFields["Ask me anything…"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
+        // Empty chat is kept short: greeting + one subtitle (no third line).
+        XCTAssertTrue(app.staticTexts["What would you like to do today?"].exists)
+        XCTAssertFalse(app.staticTexts["Explore what I can help with"].exists, "the third text line was removed")
         field.tap()
         sleep(1)
         shot("9_composer_focused")
@@ -146,5 +150,53 @@ final class WalkthroughUITests: XCTestCase {
 
         app.buttons["Collapse input"].tap()
         XCTAssertTrue(app.textFields["Ask me anything…"].waitForExistence(timeout: 5))
+    }
+
+    private func launchWithFakeStream() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments += ["-didSeeOnboarding", "YES", "-uiTestInMemory", "-uiTestFakeStream"]
+        app.launch()
+        return app
+    }
+
+    /// The reply is typed out progressively (not dumped at once) and ends fully rendered.
+    func testReplyIsTypedOutProgressively() throws {
+        let app = launchWithFakeStream()
+        let field = app.textFields["Ask me anything…"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        field.typeText("Explain async/await")
+        app.buttons["Send message"].tap()
+
+        // Shortly after the first characters the end of the reply must not be visible yet.
+        let heading = app.staticTexts["The core idea"]
+        XCTAssertTrue(heading.waitForExistence(timeout: 8), "reply should start appearing")
+        XCTAssertFalse(app.staticTexts["suspension point"].exists, "the end of the reply should not be shown yet")
+        shot("12_typing")
+
+        // Eventually everything is there.
+        XCTAssertTrue(app.staticTexts["suspension point"].waitForExistence(timeout: 30), "full reply should appear")
+        sleep(1)
+        shot("13_typed_done")
+        XCTAssertFalse(app.buttons["Stop generating"].exists)
+    }
+
+    /// Stopping mid-stream is not an error: partial text stays and a note appears.
+    func testStopMidStreamShowsNoteNotError() throws {
+        let app = launchWithFakeStream()
+        let field = app.textFields["Ask me anything…"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        field.typeText("Hello")
+        app.buttons["Send message"].tap()
+
+        let stop = app.buttons["Stop generating"].firstMatch
+        XCTAssertTrue(stop.waitForExistence(timeout: 8))
+        stop.tap()
+
+        XCTAssertTrue(app.staticTexts["You stopped the response."].waitForExistence(timeout: 5), "a stopped note should appear")
+        XCTAssertFalse(app.staticTexts["Unexpected response"].exists, "stopping must not show an API error")
+        XCTAssertFalse(app.staticTexts["No reply received"].exists)
+        shot("14_stopped")
     }
 }

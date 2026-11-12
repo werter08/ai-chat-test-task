@@ -153,6 +153,38 @@ enum MarkdownParser {
     }
 }
 
+// MARK: - Streaming helper
+
+/// While a reply is typed out, the revealed text can end inside `*italic`, `**bold` or `inline code`.
+/// Closing the open marker (for display only) avoids flashing raw `*` / backticks until the real closer arrives.
+enum StreamingMarkdown {
+    nonisolated static func closeOpenMarkers(_ text: String) -> String {
+        var inFence = false
+        var prose: [String] = []
+        for line in text.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") { inFence.toggle(); continue }
+            if inFence { continue }
+            // A leading "* " / "- " / "+ " is a list bullet, not emphasis.
+            var l = trimmed
+            if let first = l.first, "*-+".contains(first), l.dropFirst().first == " " { l = String(l.dropFirst(2)) }
+            prose.append(l)
+        }
+        if inFence { return text }   // still inside a code block: nothing to close
+
+        let joined = prose.joined(separator: "\n")
+        let backticks = joined.filter { $0 == "`" }.count
+        if backticks % 2 == 1 { return text + "`" }
+
+        let doubles = joined.components(separatedBy: "**").count - 1
+        let singles = joined.replacingOccurrences(of: "**", with: "").filter { $0 == "*" }.count
+        var result = text
+        if doubles % 2 == 1 { result += "**" }
+        if singles % 2 == 1 { result += "*" }
+        return result
+    }
+}
+
 // MARK: - Inline styling
 
 enum InlineMarkdown {
