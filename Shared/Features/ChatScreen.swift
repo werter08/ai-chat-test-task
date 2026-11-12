@@ -9,6 +9,7 @@ struct ChatScreen: View {
 
     @Environment(\.modelContext) private var context
     @Environment(ChatEngine.self) private var engine
+    @Environment(Toast.self) private var toast
     @AppStorage(UserProfile.nameKey) private var userName = ""
     @State private var draft = ""
 
@@ -54,6 +55,14 @@ struct ChatScreen: View {
         }
         .frame(maxWidth: 760)
         .frame(maxWidth: .infinity)
+        .overlay(alignment: .bottom) {
+            if let message = toast.message {
+                ToastView(text: message)
+                    .padding(.bottom, 92)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .allowsHitTesting(false)
+            }
+        }
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
         #endif
@@ -95,9 +104,17 @@ struct ChatScreen: View {
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(messages) { message in
-                        MessageBubble(message: message)
+                        if message.role == .note {
+                            NoteRow(
+                                text: message.content,
+                                onRetry: message.id == messages.last?.id && !state.isGenerating
+                                    ? { engine.retry(chat, context: context) } : nil
+                            )
+                        } else {
+                            MessageBubble(message: message)
+                        }
                     }
-                    if state.isGenerating && messages.last?.role == .user {
+                    if state.isGenerating && messages.last?.role != .assistant {
                         TypingIndicator()
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }

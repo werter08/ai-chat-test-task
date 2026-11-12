@@ -2,13 +2,10 @@ import SwiftUI
 
 struct MessageBubble: View {
     let message: Message
+    @Environment(Toast.self) private var toast
+    @State private var copied = false
 
     private var isUser: Bool { message.role == .user }
-
-    private var rendered: AttributedString {
-        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return (try? AttributedString(markdown: message.content, options: options)) ?? AttributedString(message.content)
-    }
 
     private var shape: UnevenRoundedRectangle {
         UnevenRoundedRectangle(
@@ -25,21 +22,15 @@ struct MessageBubble: View {
     var body: some View {
         HStack(alignment: .top, spacing: Theme.spacing2) {
             if isUser { Spacer(minLength: 48) }
-            Text(rendered)
-                .font(.system(size: 16))
-                .lineSpacing(3)
-                .textSelection(.enabled)
-                .foregroundStyle(isUser ? Color.white : Color.primary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(isUser ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Theme.fill), in: shape)
-                .accessibilityLabel("\(isUser ? "You" : "Assistant"): \(message.content)")
+            bubble
             if !isUser {
                 VStack(spacing: 10) {
-                    Button { Clipboard.copy(message.content) } label: {
-                        Image(systemName: "doc.on.doc")
+                    Button(action: copyMessage) {
+                        Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")
+                            .foregroundStyle(copied ? Color.green : .secondary)
+                            .contentTransition(.symbolEffect(.replace))
                     }
-                    .accessibilityLabel("Copy")
+                    .accessibilityLabel(copied ? "Copied" : "Copy")
                     ShareLink(item: message.content) {
                         Image(systemName: "square.and.arrow.up")
                     }
@@ -49,9 +40,67 @@ struct MessageBubble: View {
                 .foregroundStyle(.secondary)
                 .buttonStyle(.plain)
                 .padding(.top, 6)
-                Spacer(minLength: 24)
+                .sensoryFeedback(.success, trigger: copied) { _, new in new }
             }
         }
+    }
+
+    private func copyMessage() {
+        Clipboard.copy(message.content)
+        toast.show("Copied to clipboard")
+        withAnimation(.snappy) { copied = true }
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            withAnimation(.snappy) { copied = false }
+        }
+    }
+
+    @ViewBuilder
+    private var bubble: some View {
+        if isUser {
+            Text(InlineMarkdown.attributed(message.content))
+                .font(.system(size: 16))
+                .lineSpacing(3)
+                .textSelection(.enabled)
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.accentColor, in: shape)
+                .frame(maxWidth: 560, alignment: .trailing)
+                .accessibilityLabel("You: \(message.content)")
+        } else {
+            MarkdownView(text: message.content)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Theme.fill, in: shape)
+                .frame(maxWidth: 680, alignment: .leading)
+        }
+    }
+}
+
+/// Centered, display-only line such as "You stopped the response." (with Retry when it is the last item).
+struct NoteRow: View {
+    let text: String
+    let onRetry: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: Theme.spacing2) {
+            Image(systemName: "stop.circle")
+            Text(text)
+            if let onRetry {
+                Button("Retry", action: onRetry)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor)
+                    .fontWeight(.semibold)
+            }
+        }
+        .font(.system(size: 13))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Theme.fill, in: Capsule())
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
     }
 }
 

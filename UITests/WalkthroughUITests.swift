@@ -76,4 +76,29 @@ final class WalkthroughUITests: XCTestCase {
         app.buttons["sidebar.settings"].tap()
         app.buttons["System"].tap()
     }
+
+    /// Markdown reply (code block, list, table) renders, and Copy gives visible feedback.
+    func testMarkdownReplyAndCopyFeedback() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-didSeeOnboarding", "YES", "-uiTestInMemory", "-uiTestSeedMarkdown"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Chatterly"].waitForExistence(timeout: 10))
+
+        app.buttons["Menu"].tap()
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Demo: async/await'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        XCTAssertTrue(app.staticTexts["The core idea"].waitForExistence(timeout: 5), "heading should be rendered, not '## The core idea'")
+        XCTAssertFalse(app.staticTexts["## The core idea"].exists)
+        shot("7_markdown")
+
+        // Copy gives visible feedback.
+        let copy = app.buttons["Copy"].firstMatch
+        XCTAssertTrue(copy.waitForExistence(timeout: 5))
+        copy.tap()
+        XCTAssertTrue(app.buttons["Copied"].waitForExistence(timeout: 2), "copy button should switch to 'Copied'")
+        shot("8_copied")
+        // The "Copied to clipboard" toast is not exposed to XCUITest (it is non-interactive); it is checked in the 8_copied screenshot.
+    }
 }

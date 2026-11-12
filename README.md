@@ -24,10 +24,11 @@ OpenRouter (`/api/v1/chat/completions`, `stream: true`), model `baidu/ernie-5.5-
 The key is XOR-ed with a random salt by `scripts/obfuscate_key.swift` and stored as byte arrays, so it is not a plain string in the source or binary. This is obfuscation, not security: anyone with the binary can recover the key. Use a free, limited key.
 
 ## What works
-- Streaming replies as they are generated; **Stop** keeps the partial reply.
+- Streaming replies as they are generated; **Stop** keeps the partial reply and adds a "You stopped the response." note (with Retry) — it is not treated as an error.
+- Replies are rendered as Markdown: headings, lists, quotes, tables, inline code, and code blocks with syntax colors and a Copy button. Copy actions show a checkmark and a "Copied to clipboard" toast.
 - Opens straight into an empty chat with a greeting and mode cards. Modes (Writing, Creative, Conversation, Personal, Developer) change the system prompt and offer quick prompts.
 - Multiple chats: a full-screen sidebar (menu icon) with search, a **New chat** button and your history (swipe to delete); history persists across restarts (SwiftData). Quick prompts are bordered, tappable bubbles.
-- Settings (sidebar footer, a regular page): your name, custom instructions added to every chat, System/Light/Dark theme, delete all chats, Help and Privacy pages.
+- Settings (sidebar footer, a custom-designed page): your name, custom instructions added to every chat, System/Light/Dark theme, delete all chats, Help and Privacy pages.
 - States: empty list, empty chat (greeting + starter prompts), typing indicator, and errors with **Retry** — no network, timeout, invalid key, limit reached (402/429), model unavailable, server error, missing key. After a restart, a chat ending in an unanswered message also offers Retry.
 - Light and dark themes; design kit applied (red accent, 16px cards, 48px controls, onboarding on first launch).
 - iOS 18 minimum (no newer APIs used), macOS 15 target `AIChatMac` sharing the same code.
@@ -38,17 +39,17 @@ The key is XOR-ed with a random salt by `scripts/obfuscate_key.swift` and stored
 - Onboarding uses SF Symbols instead of the robot illustrations from the design kit (no exported assets); Urbanist font not bundled (system font used).
 - Login/sign-up/OTP, the Pro banner, Notifications, Security and Logout from the design kit are intentionally skipped (no accounts or backend in the task).
 - Only an iOS 26.5 simulator was available for testing; iOS 18 is covered by API choice, not by a run on an iOS 18 runtime.
-- Replies are rendered with inline Markdown only (no code blocks/lists).
+- Syntax highlighting is a lightweight, language-agnostic highlighter (keywords, types, strings, numbers, comments), not a full grammar; no images or nested block quotes in Markdown.
 - The free model can be rate limited (429); the app shows the error with Retry.
 - Context sent to the model is capped to the last 30 messages.
 - The macOS target builds, but I did not run or visually check it.
 
 ## How it was verified
-- 25 unit tests (plus 2 opt-in live tests, skipped by default) and 1 UI test (`xcodebuild test`): SSE parser, error mapping, key round-trip, and `ChatEngine` with a mock backend (send, stream, failure leaves no empty bubble, retry after failure and after mid-stream error, stop keeps partial, blank input ignored, context cap). One of these caught a real bug (Retry did nothing after a mid-stream error).
+- 38 unit tests (plus 2 opt-in live tests, skipped by default) and 2 UI tests (`xcodebuild test`): SSE parser, error mapping, key round-trip, and `ChatEngine` with a mock backend (send, stream, failure leaves no empty bubble, retry after failure and after mid-stream error, stop keeps partial, blank input ignored, context cap). One of these caught a real bug (Retry did nothing after a mid-stream error).
 - Opt-in live tests against the real API: `TEST_RUNNER_RUN_LIVE_TESTS=1 xcodebuild test ...` — streamed a real reply; an invalid key maps to "unauthorized".
 - `Build.command` run end to end (generate, build, install, launch); iOS and macOS targets both build.
 - Checked that the built `.app` contains no plain-text key.
-- A UI test (`UITests/`) taps through home, a mode, the sidebar and Settings, and asserts that switching to Dark really turns the Settings page and the home screen dark (it samples the background brightness). Sending a message in the UI was not automated.
+- UI tests (`UITests/`) tap through home, a mode, the sidebar and Settings and assert that switching to Dark really turns the Settings page and home dark (background brightness is sampled), and that a seeded Markdown reply renders (no raw `##`) and Copy flips to "Copied". The seed uses debug-only launch args (`-uiTestInMemory -uiTestSeedMarkdown`, in-memory store, not compiled into Release). The toast itself is checked in a screenshot only. Sending a real message through the UI was not automated.
 
 ## Docs
 `docs/TASK.md` (task), `docs/PLAN.md` (plan), `CLAUDE.md` (agent rules), `ai-logs/` (AI session logs, secrets redacted).

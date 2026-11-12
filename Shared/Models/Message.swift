@@ -4,6 +4,8 @@ import SwiftData
 enum MessageRole: String, Codable {
     case user
     case assistant
+    /// Local, display-only marker (e.g. "You stopped the response."). Never sent to the AI.
+    case note
 }
 
 @Model

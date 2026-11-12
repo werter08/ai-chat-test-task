@@ -58,7 +58,7 @@ struct RootView: View {
 
     // MARK: Sidebar
 
-    /// Full width on phones; a 380pt panel with a dimmed backdrop on wide screens (iPad / Mac).
+    /// Opens at 70% of the width on phones (380pt on wide screens); tapping the dimmed rest closes it.
     private var sidebar: some View {
         GeometryReader { geo in
             let wide = geo.size.width >= 600
@@ -81,11 +81,13 @@ struct RootView: View {
                     },
                     onClose: { setSidebar(false) }
                 )
-                .frame(width: wide ? 380 : geo.size.width)
-                if wide {
-                    Color.black.opacity(0.25)
-                        .onTapGesture { setSidebar(false) }
-                }
+                .frame(width: wide ? 380 : geo.size.width * 0.7)
+                .shadow(color: .black.opacity(0.18), radius: 12, x: 2)
+                Color.black.opacity(0.3)
+                    .contentShape(Rectangle())
+                    .onTapGesture { setSidebar(false) }
+                    .accessibilityLabel("Close menu")
+                    .accessibilityAddTraits(.isButton)
             }
         }
         .transition(.move(edge: .leading))

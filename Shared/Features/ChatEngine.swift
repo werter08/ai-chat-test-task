@@ -14,10 +14,13 @@ final class ChatEngine {
 
     /// How many recent messages are sent as context (keeps requests small for free models).
     nonisolated static let maxContextMessages = 30
+    nonisolated static let stoppedNote = "You stopped the response."
     nonisolated static let systemPrompt = "You are a helpful, concise assistant. Answer in the user's language."
 
     private(set) var states: [UUID: State] = [:]
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
+    /// Chats whose generation the user stopped by hand (as opposed to being cancelled by a deletion).
+    @ObservationIgnored private var stopRequested: Set<UUID> = []
     @ObservationIgnored private let client: ChatStreaming
     @ObservationIgnored private let profile: () -> UserProfile
 
@@ -47,22 +50,22 @@ final class ChatEngine {
         generate(in: chat, context: context)
     }
 
-    /// Re-requests the answer to the last user message, dropping any partial/failed assistant reply.
+    /// Re-requests the answer to the last user message, dropping any "stopped" note and partial/failed reply.
     func retry(_ chat: Chat, context: ModelContext) {
         guard !state(for: chat).isGenerating else { return }
-        if let last = chat.lastMessage, last.role == .assistant {
-            // Detach first: a deleted model stays in `chat.messages` until the context saves.
-            chat.messages.removeAll { $0.id == last.id }
-            context.delete(last)
-            try? context.save()
-        }
+        while let last = chat.lastMessage, last.role == .note { remove(last, from: chat, context: context) }
+        if let last = chat.lastMessage, last.role == .assistant { remove(last, from: chat, context: context) }
+        try? context.save()
         guard chat.lastMessage?.role == .user else { return }
         generate(in: chat, context: context)
     }
 
-    /// Stops the running generation; the partial reply is kept.
+    /// Stops the running generation. The partial reply is kept and a "stopped" note is added to the chat;
+    /// this is not an error.
     func stop(_ chat: Chat) {
-        tasks[chat.id]?.cancel()
+        guard let task = tasks[chat.id] else { return }
+        stopRequested.insert(chat.id)
+        task.cancel()
     }
 
     /// Cancels and forgets everything about a chat (call before deleting it).
@@ -70,6 +73,13 @@ final class ChatEngine {
         tasks[chat.id]?.cancel()
         tasks[chat.id] = nil
         states[chat.id] = nil
+        stopRequested.remove(chat.id)
+    }
+
+    /// Detach first: a deleted model stays in `chat.messages` until the context saves.
+    private func remove(_ message: Message, from chat: Chat, context: ModelContext) {
+        chat.messages.removeAll { $0.id == message.id }
+        context.delete(message)
     }
 
     // MARK: Generation
@@ -94,15 +104,24 @@ final class ChatEngine {
                         reply = created
                     }
                 }
-                if reply == nil { failure = .invalidResponse }
+                // A cancelled stream ends quietly (no error) — only a *non-cancelled* empty stream is a failure.
+                if reply == nil && !Task.isCancelled { failure = .invalidResponse }
             } catch is CancellationError {
-                // Stopped by the user — keep whatever has arrived.
+                // Stopped — handled below.
             } catch {
                 failure = (error as? ChatAPIError) ?? ChatAPIError.from(transport: error)
             }
+            // The chat may have been deleted while generating (`discard` clears the task entry): touch nothing then.
+            guard let self, self.tasks[chatID] != nil else { return }
+            if self.stopRequested.remove(chatID) != nil {
+                failure = nil
+                let note = Message(role: .note, content: Self.stoppedNote)
+                note.chat = chat
+                context.insert(note)
+            }
             chat.updatedAt = .now
             try? context.save()
-            self?.finish(chatID: chatID, error: failure)
+            self.finish(chatID: chatID, error: failure)
         }
     }
 
@@ -114,7 +133,7 @@ final class ChatEngine {
     // MARK: Helpers
 
     nonisolated static func buildRequest(from messages: [Message], mode: ChatMode? = nil, profile: UserProfile = UserProfile()) -> [APIMessage] {
-        let recent = messages.suffix(maxContextMessages).map { APIMessage(role: $0.roleRaw, content: $0.content) }
+        let recent = messages.filter { $0.role != .note }.suffix(maxContextMessages).map { APIMessage(role: $0.roleRaw, content: $0.content) }
         return [APIMessage(role: "system", content: makeSystemPrompt(mode: mode, profile: profile))] + recent
     }
 

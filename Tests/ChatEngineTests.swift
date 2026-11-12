@@ -7,6 +7,8 @@ private struct MockClient: ChatStreaming {
     var chunks: [String] = []
     var failure: ChatAPIError?
     var hangAfterChunks = false
+    /// When cancelled, end the stream without throwing (what AsyncThrowingStream does for a cancelled consumer).
+    var quietCancel = false
 
     func stream(messages: [APIMessage]) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
@@ -16,7 +18,7 @@ private struct MockClient: ChatStreaming {
                 if hangAfterChunks {
                     // Wait until cancelled.
                     while !Task.isCancelled { try? await Task.sleep(for: .milliseconds(10)) }
-                    continuation.finish(throwing: CancellationError())
+                    if quietCancel { continuation.finish() } else { continuation.finish(throwing: CancellationError()) }
                     return
                 }
                 continuation.finish()
@@ -111,9 +113,72 @@ final class ChatEngineTests: XCTestCase {
         engine.stop(chat)
         await waitUntilIdle(engine, chat)
 
-        XCTAssertEqual(chat.sortedMessages.last?.content, "Partial")
+        // [user, partial reply, "stopped" note]
+        XCTAssertEqual(chat.sortedMessages.map(\.roleRaw), ["user", "assistant", "note"])
+        XCTAssertEqual(chat.sortedMessages[1].content, "Partial")
         XCTAssertFalse(engine.state(for: chat).isGenerating)
         XCTAssertNil(engine.state(for: chat).error)
+    }
+
+    func testStopBeforeFirstTokenIsNotAnErrorAndAddsNote() async throws {
+        for quiet in [false, true] {
+            let context = try makeContext()
+            let chat = Chat(); context.insert(chat)
+            let engine = ChatEngine(client: MockClient(hangAfterChunks: true, quietCancel: quiet))
+
+            engine.send("Go", in: chat, context: context)
+            XCTAssertTrue(engine.state(for: chat).isGenerating)
+            engine.stop(chat)
+            await waitUntilIdle(engine, chat)
+
+            XCTAssertNil(engine.state(for: chat).error, "quietCancel=\(quiet)")
+            XCTAssertEqual(chat.sortedMessages.map(\.roleRaw), ["user", "note"], "quietCancel=\(quiet)")
+            XCTAssertEqual(chat.sortedMessages.last?.content, ChatEngine.stoppedNote)
+        }
+    }
+
+    func testStopAfterPartialReplyKeepsReplyThenNote() async throws {
+        let context = try makeContext()
+        let chat = Chat(); context.insert(chat)
+        let engine = ChatEngine(client: MockClient(chunks: ["Part"], hangAfterChunks: true, quietCancel: true))
+        engine.send("Go", in: chat, context: context)
+        for _ in 0..<200 where chat.messages.count < 2 { try? await Task.sleep(for: .milliseconds(10)) }
+        engine.stop(chat)
+        await waitUntilIdle(engine, chat)
+        XCTAssertEqual(chat.sortedMessages.map(\.roleRaw), ["user", "assistant", "note"])
+        XCTAssertNil(engine.state(for: chat).error)
+    }
+
+    func testNotesAreNeverSentToTheModel() {
+        let messages = [Message(role: .user, content: "hi"), Message(role: .note, content: "stopped")]
+        let request = ChatEngine.buildRequest(from: messages)
+        XCTAssertEqual(request.map(\.role), ["system", "user"])
+    }
+
+    func testRetryAfterStopRemovesNoteAndRegenerates() async throws {
+        let context = try makeContext()
+        let chat = Chat(); context.insert(chat)
+        let stopping = ChatEngine(client: MockClient(hangAfterChunks: true, quietCancel: true))
+        stopping.send("Q", in: chat, context: context)
+        stopping.stop(chat)
+        await waitUntilIdle(stopping, chat)
+
+        let working = ChatEngine(client: MockClient(chunks: ["Answer"]))
+        working.retry(chat, context: context)
+        await waitUntilIdle(working, chat)
+        XCTAssertEqual(chat.sortedMessages.map(\.content), ["Q", "Answer"])
+    }
+
+    func testDiscardWhileGeneratingDoesNotTouchChat() async throws {
+        let context = try makeContext()
+        let chat = Chat(); context.insert(chat)
+        let engine = ChatEngine(client: MockClient(hangAfterChunks: true, quietCancel: true))
+        engine.send("Q", in: chat, context: context)
+        engine.discard(chat)
+        context.delete(chat)
+        try context.save()
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertFalse(engine.state(for: chat).isGenerating)
     }
 
     func testBlankMessageIsIgnored() async throws {
