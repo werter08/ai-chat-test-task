@@ -10,3 +10,4 @@ AIChat/
 Design/
 ai-logs/
 Config/Local.xcconfig
+scripts/redact.local.txt
